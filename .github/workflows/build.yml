@@ -1,0 +1,108 @@
+name: Compilacion Oficial Estilo Pipetto para Unisoc T618
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # Permite activar la compilacion manualmente con un boton
+
+jobs:
+  build-pipetto-unisoc:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar codigo de tu repositorio
+      uses: actions/checkout@v4
+
+    - name: Instalar herramientas esenciales de compilacion
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y meson ninja-build python3-pip wget unzip zip
+
+    - name: Configurar Android NDK oficial (r26b)
+      run: |
+        wget https://google.com
+        unzip -q android-ndk-r26b-linux.zip
+        echo "ANDROID_NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r26b" >> $GITHUB_ENV
+        echo "$GITHUB_WORKSPACE/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+    - name: Clonar repositorio original del Wrapper de Pipetto-crypto
+      run: |
+        git clone --recursive https://github.com pipetto_src
+
+    - name: Inyectar parche de compatibilidad para GPU Mali (Vulkan 1.0/1.1)
+      run: |
+        cd pipetto_src
+        
+        # Modificar archivos fuente para forzar el engaño (Spoof) de version Vulkan 1.1 
+        if [ -f src/wrapper.cpp ]; then
+          sed -i 's/VK_API_VERSION_1_0/VK_API_VERSION_1_1/g' src/wrapper.cpp
+          sed -i 's/VK_API_VERSION_1_2/VK_API_VERSION_1_1/g' src/wrapper.cpp
+          sed -i 's/VK_API_VERSION_1_3/VK_API_VERSION_1_1/g' src/wrapper.cpp
+        fi
+
+        # Forzar la transcodificacion nativa a ASTC
+        if [ -f src/transcoder.cpp ]; then
+          sed -i 's/VK_FORMAT_R8G8B8A8_UNORM/VK_FORMAT_ASTC_4x4_UNORM_BLOCK/g' src/transcoder.cpp
+        fi
+
+    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
+      run: |
+        cat <<EOF > arm64-unisoc.txt
+        [binaries]
+        c = 'aarch64-linux-android24-clang'
+        cpp = 'aarch64-linux-android24-clang++'
+        ar = 'aarch64-linux-android-ar'
+        strip = 'aarch64-linux-android-strip'
+
+        [properties]
+        c_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-O3', '-mcpu=cortex-a75']
+        cpp_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-O3', '-mcpu=cortex-a75', '-std=c++17']
+
+        [host_machine]
+        system = 'android'
+        cpu_family = 'aarch64'
+        cpu = 'cortex-a75'
+        endian = 'little'
+        EOF
+
+    - name: Compilar usando el ecosistema Meson y Ninja
+      run: |
+        cd pipetto_src
+        meson setup build_output --cross-file ../arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android
+        ninja -C build_output
+
+    - name: Organizar estructura para instalador de Winlator
+      run: |
+        mkdir -p package/vulkan/lib64
+        
+        # Copiar el archivo .so compilado con las optimizaciones de Unisoc
+        cp pipetto_src/build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
+
+        # Crear el manifiesto meta.json oficial para Winlator
+        cat <<EOF > package/meta.json
+        {
+          "name": "Pipetto Wrapper - Unisoc T618 Build",
+          "version": "1.5.0",
+          "author": "Pipetto & Unisoc Mod",
+          "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
+          "driverType": "VulkanWrapper",
+          "environment": {
+            "VULKAN_WRAPPER_VERSION": "1.1",
+            "BCN_TRANSCODE_TARGET": "ASTC",
+            "MALI_TEXTURE_QUALITY": "LOW",
+            "IGNORE_VULKAN_1_2_EXTENSIONS": "1",
+            "FORCE_VULKAN_1_1_SPOOF": "1"
+          }
+        }
+        EOF
+
+    - name: Crear Driver Pack en formato ZIP ejecutable
+      run: |
+        cd package
+        zip -r ../Pipetto_Unisoc_T618_Wrapper.zip ./*
+
+    - name: Publicar y guardar el archivo compilado resultante
+      uses: actions/upload-artifact@v4
+      with:
+        name: Pack-Wrapper-Pipetto-Unisoc
+        path: Pipetto_Unisoc_T618_Wrapper.zip
