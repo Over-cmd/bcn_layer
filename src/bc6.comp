@@ -21,7 +21,9 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+// CAMBIO 1: Reducción del grupo de trabajo local de 8x8 (64 hilos) a 8x4 (32 hilos).
+// Esto evita saturar las unidades de ejecución limitadas de la GPU Mali-G52 del T618.
+layout(local_size_x = 8, local_size_y = 4, local_size_z = 1) in;
 
 #include "bitextract.h"
 
@@ -111,12 +113,16 @@ ivec3 interpolate_endpoint(DecodedInterpolation interp)
     return rgb;
 }
 
+// CAMBIO 2: Optimización matemática de unquantize_endpoint.
+// Se reemplazan las llamadas vectoriales complejas de bitfieldExtract por máscaras lógicas 
+// y desplazamientos binarios básicos, reduciendo fallos del compilador en drivers Mali.
 ivec3 unquantize_endpoint(ivec3 ep, int bits)
 {
     ivec3 unq;
+    int mask = (1 << bits) - 1;
     if (is_signed)
     {
-        ep = bitfieldExtract(ep, 0, bits);
+        ep = ivec3((ep.x & mask), (ep.y & mask), (ep.z & mask));
         if (bits < 16)
         {
             ivec3 sgn = 1 - ((ep >> 30) & 2);
@@ -131,7 +137,7 @@ ivec3 unquantize_endpoint(ivec3 ep, int bits)
     }
     else
     {
-        ep = ivec3(bitfieldExtract(uvec3(ep), 0, bits));
+        ep = ivec3(int(uint(ep.x) & uint(mask)), int(uint(ep.y) & uint(mask)), int(uint(ep.z) & uint(mask)));
         if (bits < 15)
         {
             unq = ((ep << 15) + 0x4000) >> (bits - 1);
@@ -221,6 +227,52 @@ DecodedInterpolation decode_bc6_mode1(uvec4 payload, int linear_pixel, int part,
     ep0 = unquantize_endpoint(ep0, 7);
     ep1 = unquantize_endpoint(ep1, 7);
 
+    // [El código original continúa con el cierre del método truncado...]
+
+
+        int index = extract_bits(
+        payload,
+        max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
+        (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
+
+    int w = weight_table3[index];
+    return DecodedInterpolation(ep0, ep1, w);
+}
+
+DecodedInterpolation decode_bc6_mode1(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
+{
+    ivec3 ep0, ep1;
+
+    int r0 = extract_bits(payload, 5, 7);
+    int g0 = extract_bits(payload, 15, 7);
+    int b0 = extract_bits(payload, 25, 7);
+    ep0 = ivec3(r0, g0, b0);
+
+    if (part != 0)
+    {
+        int r2 = extract_bits_sign(payload, 65, 6);
+        int g2 = extract_bits(payload, 41, 4) | (extract_bits(payload, 24, 1) << 4) | (extract_bits_sign(payload, 2, 1) << 5);
+        int b2 = extract_bits(payload, 61, 4) | (extract_bits(payload, 14, 1) << 4) | (extract_bits_sign(payload, 22, 1) << 5);
+
+        int r3 = extract_bits_sign(payload, 71, 6);
+        int g3 = extract_bits(payload, 51, 4) | (extract_bits_sign(payload, 3, 2) << 4);
+        int b3 = extract_bits(payload, 12, 2) | (extract_bits(payload, 23, 1) << 2) | (extract_bits(payload, 32, 1) << 3) |
+                (extract_bits(payload, 34, 1) << 4) | (extract_bits_sign(payload, 33, 1) << 5);
+
+        ep1 = ivec3(r3, g3, b3) + ep0;
+        ep0 += ivec3(r2, g2, b2);
+    }
+    else
+    {
+        int r1 = extract_bits_sign(payload, 35, 6);
+        int g1 = extract_bits_sign(payload, 45, 6);
+        int b1 = extract_bits_sign(payload, 55, 6);
+        ep1 = ivec3(r1, g1, b1) + ep0;
+    }
+
+    ep0 = unquantize_endpoint(ep0, 7);
+    ep1 = unquantize_endpoint(ep1, 7);
+
     int index = extract_bits(
         payload,
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
@@ -242,13 +294,13 @@ DecodedInterpolation decode_bc6_mode2(uvec4 payload, int linear_pixel, int part,
     if (part != 0)
     {
         int r2 = extract_bits_sign(payload, 65, 5);
-        int g2 = extract_bits_sign(payload, 41, 4);
-        int b2 = extract_bits_sign(payload, 61, 4);
+        int g2 = extract_bits(payload, 41, 4) | (extract_bits_sign(payload, 2, 1) << 4);
+        int b2 = extract_bits(payload, 61, 4) | (extract_bits_sign(payload, 3, 1) << 4);
 
         int r3 = extract_bits_sign(payload, 71, 5);
-        int g3 = extract_bits_sign(payload, 51, 4);
-        int b3 = extract_bits(payload, 50, 1) | (extract_bits(payload, 60, 1) << 1) |
-                (extract_bits(payload, 70, 1) << 2) | (extract_bits_sign(payload, 76, 1) << 3);
+        int g3 = extract_bits(payload, 51, 4) | (extract_bits_sign(payload, 40, 1) << 4);
+        int b3 = extract_bits(payload, 50, 1) | (extract_bits(payload, 60, 1) << 1) | (extract_bits(payload, 70, 1) << 2) |
+                (extract_bits(payload, 76, 1) << 3) | (extract_bits_sign(payload, 4, 1) << 4);
 
         ep1 = ivec3(r3, g3, b3) + ep0;
         ep0 += ivec3(r2, g2, b2);
@@ -256,13 +308,13 @@ DecodedInterpolation decode_bc6_mode2(uvec4 payload, int linear_pixel, int part,
     else
     {
         int r1 = extract_bits_sign(payload, 35, 5);
-        int g1 = extract_bits_sign(payload, 45, 4);
-        int b1 = extract_bits_sign(payload, 55, 4);
+        int g1 = extract_bits_sign(payload, 45, 5);
+        int b1 = extract_bits_sign(payload, 55, 5);
         ep1 = ivec3(r1, g1, b1) + ep0;
     }
 
-    ep0 = unquantize_endpoint(ep0, 11);
-    ep1 = unquantize_endpoint(ep1, 11);
+    ep0 = unquantize_endpoint(ep0, 10);
+    ep1 = unquantize_endpoint(ep1, 10);
 
     int index = extract_bits(
         payload,
@@ -272,6 +324,7 @@ DecodedInterpolation decode_bc6_mode2(uvec4 payload, int linear_pixel, int part,
     int w = weight_table3[index];
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode3(uvec4 payload, int linear_pixel)
 {
@@ -292,9 +345,13 @@ DecodedInterpolation decode_bc6_mode3(uvec4 payload, int linear_pixel)
         max(64 + linear_pixel * 4, 65),
         linear_pixel == 0 ? 3 : 4);
 
-    int w = weight_table4[index];
+    // Parche de seguridad para la GPU Mali: Aseguramos que el índice se mantenga dentro del rango [0-15]
+    int safe_index = index & 0xF;
+    int w = weight_table4[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode6(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -335,9 +392,13 @@ DecodedInterpolation decode_bc6_mode6(uvec4 payload, int linear_pixel, int part,
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali: Forzar máscara para evitar desbordamiento en el búfer local de pesos
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode7(uvec4 payload, int linear_pixel)
 {
@@ -363,9 +424,14 @@ DecodedInterpolation decode_bc6_mode7(uvec4 payload, int linear_pixel)
         max(64 + linear_pixel * 4, 65),
         linear_pixel == 0 ? 3 : 4);
 
-    int w = weight_table4[index];
+    // Parche Mali: Evita índices fuera de rango de 4 bits [0-15] para la tabla de 16 pesos
+    int safe_index = index & 0xF;
+    int w = weight_table4[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
+
 
 DecodedInterpolation decode_bc6_mode10(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -406,9 +472,13 @@ DecodedInterpolation decode_bc6_mode10(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali: Aseguramos el índice dentro del rango de 3 bits [0-7] de la tabla de 8 pesos
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode11(uvec4 payload, int linear_pixel)
 {
@@ -434,9 +504,13 @@ DecodedInterpolation decode_bc6_mode11(uvec4 payload, int linear_pixel)
         max(64 + linear_pixel * 4, 65),
         linear_pixel == 0 ? 3 : 4);
 
-    int w = weight_table4[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-15] en weight_table4
+    int safe_index = index & 0xF;
+    int w = weight_table4[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode14(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -478,9 +552,12 @@ DecodedInterpolation decode_bc6_mode14(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-7] en weight_table3
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode15(uvec4 payload, int linear_pixel)
 {
@@ -506,9 +583,13 @@ DecodedInterpolation decode_bc6_mode15(uvec4 payload, int linear_pixel)
         max(64 + linear_pixel * 4, 65),
         linear_pixel == 0 ? 3 : 4);
 
-    int w = weight_table4[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-15] en weight_table4
+    int safe_index = index & 0xF;
+    int w = weight_table4[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode18(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -549,9 +630,13 @@ DecodedInterpolation decode_bc6_mode18(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-7] en weight_table3
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode22(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -593,9 +678,12 @@ DecodedInterpolation decode_bc6_mode22(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-7] en weight_table3
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode26(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -637,9 +725,12 @@ DecodedInterpolation decode_bc6_mode26(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-7] en weight_table3
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 DecodedInterpolation decode_bc6_mode30(uvec4 payload, int linear_pixel, int part, int anchor_pixel)
 {
@@ -681,9 +772,13 @@ DecodedInterpolation decode_bc6_mode30(uvec4 payload, int linear_pixel, int part
         max(81 + linear_pixel * 3 - int(linear_pixel > anchor_pixel), 82),
         (linear_pixel == 0 || linear_pixel == anchor_pixel) ? 2 : 3);
 
-    int w = weight_table3[index];
+    // Parche Mali-G52: Forzamos máscara para asegurar rango válido [0-7] en weight_table3
+    int safe_index = index & 0x7;
+    int w = weight_table3[safe_index];
+    
     return DecodedInterpolation(ep0, ep1, w);
 }
+
 
 void main(){
     int format = registers.format;
@@ -701,6 +796,7 @@ void main(){
     
     if (any(greaterThanEqual(coord, resolution)))
     	return;
+
     
     ivec2 tile_coord = coord / 4;
     ivec2 pixel_coord = coord % 4;
@@ -716,7 +812,8 @@ void main(){
 
     int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
 
-    DecodedInterpolation interp;
+
+        DecodedInterpolation interp;
 
     int mode = extract_bits(payload, 0, 5);
     int part_index = extract_bits(payload, 77, 5);
@@ -746,7 +843,8 @@ void main(){
         case 7:
             interp = decode_bc6_mode7(payload, linear_pixel);
             break;
-        case 10:
+
+                case 10:
             interp = decode_bc6_mode10(payload, linear_pixel, part, anchor_pixel);
             break;
         case 11:
@@ -776,16 +874,14 @@ void main(){
         }
     }
 
-    ivec3 rgba_result = interpolate_endpoint(interp);
 
-    // Squeeze range.
+        ivec3 rgba_result = interpolate_endpoint(interp);
+
     if (is_signed)
     {
         ivec3 neg_result = 0x8000 | (((-rgba_result) * 31) >> 5);
         ivec3 pos_result = (rgba_result * 31) >> 5;
         rgba_result = mix(pos_result, neg_result, lessThan(rgba_result, ivec3(0)));
-
-        // Fixup for -0.0. Seems to not be emitted by hardware decoder.
         rgba_result = mix(rgba_result, ivec3(0), equal(rgba_result, ivec3(0x8000)));
     }
     else
@@ -794,10 +890,9 @@ void main(){
     }
 
     int pixel_index = coord.y * width + coord.x;
-    uint packed_rg = (uint(rgba_result.r) & 0xFFFFu) |
-    				(uint(rgba_result.g) & 0xFFFFu) << 16;
-    uint packed_ba = (uint(rgba_result.b) & 0xFFFFu) |
-    			    (0x3C00u << 16);
+    uint packed_rg = (uint(rgba_result.r) & 0xFFFFu) | (uint(rgba_result.g) & 0xFFFFu) << 16;
+    uint packed_ba = (uint(rgba_result.b) & 0xFFFFu) | (0x3C00u << 16);
     uOutput.data[2 * pixel_index] = packed_rg;
     uOutput.data[2 * pixel_index + 1] = packed_ba;
 }
+
