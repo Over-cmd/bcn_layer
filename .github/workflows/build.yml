@@ -1,16 +1,16 @@
-name: Empaquetar Wrapper Oficial Pipeta con Soporte ICD y TZST para Unisoc T618
+name: Actualizar wrapper.tzst con Khronos Validation Layer
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite activar el empaquetado manualmente con un botón
+  workflow_dispatch:
 
 jobs:
-  paquete-tzst-wrapper:
+  update-wrapper:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar código de tu repositorio
+    - name: Descargar codigo de tu repositorio
       uses: actions/checkout@v4
 
     - name: Instalar herramientas esenciales y compresor Zstd
@@ -20,26 +20,36 @@ jobs:
 
     - name: Crear la estructura estricta de carpetas dentro de USR
       run: |
-        # Creamos la carpeta de librerías dinámicas dentro de usr/ para cumplir el estándar Linux
         mkdir -p package/usr/lib
-        # Creamos la ruta estricta del sistema cambiando al nuevo nombre que solicitaste
         mkdir -p package/usr/share/vulkan/icd.d
 
-    - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
+    - name: Extraer Binario de tu Wrapper y la Capa de Validación de Khronos
       run: |
-        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so
-        wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
+        # Intentamos copiar tu wrapper existente si ya lo tenías en el repositorio, o puedes descargarlo aquí
+        if [ -f "app/src/main/assets/graphics_driver/wrapper.tzst" ]; then
+          tar -xf app/src/main/assets/graphics_driver/wrapper.tzst -C package/
+        fi
+        
+        # DESCARGA CRÍTICA: Traemos el binario oficial de Khronos Validation Layer para Android AArch64
+        wget https://github.com -O khronos.tar.gz
+        tar -xzf khronos.tar.gz
+        cp android-binaries-v1.3.261/arm64-v8a/libVkLayer_khronos_validation.so package/usr/lib/
+        
+        # Si tienes tu binario libvulkan_wrapper.so en otra ruta, asegúrate de que esté en package/usr/lib/
 
-    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan modificado"
+    - name: "INTRODUCIR ICD: Crear el manifiesto JSON con soporte de Capa"
       run: |
-        # Configuramos el Library_path apuntando a libvulkan_wrapper.so con tu nuevo nombre de archivo
         cat <<EOF > package/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json
         {
-          "ICD": {
+          "file_format_version": "1.0.0",
+          "layer": {
+            "name": "VK_LAYER_KHRONOS_validation",
+            "type": "GLOBAL",
+            "library_path": "libVkLayer_khronos_validation.so",
             "api_version": "1.1.128",
-            "library_path": "libvulkan_wrapper.so"
-          },
-          "file_format_version": "1.0.0"
+            "implementation_version": "1",
+            "description": "Khronos Vulkan Validation Layer para BCN Unisoc T618"
+          }
         }
         EOF
 
@@ -47,37 +57,35 @@ jobs:
       run: |
         cat <<EOF > package/meta.json
         {
-          "nombre": "Pipetto Wrapper - Unisoc T618 Flat Build",
-          "versión": "6.0.0",
-          "autor": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial con inyección de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "nombre": "BCN Layer - Unisoc T618 Vulkan 1.1 Fixed",
+          "versión": "1.1.0",
+          "autor": "Usuario Mod & Khronos",
+          "description": "Wrapper personalizado con inyección de Khronos Validation Layer para GPU Mali-G52.",
           "driverType": "VulkanWrapper",
           "ambiente": {
             "VULKAN_WRAPPER_VERSION": "1.1",
-            "BCN_TRANSCODE_TARGET": "ASTC",
-            "CALIDAD_DE_TEXTURA_MALI": "BAJA",
-            "IGNORE_VULKAN_1_2_EXTENSIONS": "1",
-            "FORCE_VULKAN_1_1_SPOOF": "1",
-            "VK_ICD_FILENAMES": "usr/share/vulkan/icd.d/wrapper_icd_aarch64.json"
+            "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json",
+            "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation",
+            "MESA_VK_IGNORE_CONFORMANCE_WARNINGS": "1",
+            "DXVK_FILTER_DEVICE_NAME": "Mali"
           }
         }
         EOF
 
-    - name: "COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio"
+    - name: "COMPILACION DEL NUEVO wrapper.tzst"
       run: |
-        # Entramos a la carpeta de trabajo
         cd package
-        # Comprimimos el contenido plano asignando directamente el nombre wrapper.tzst
         tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
         cd ..
 
-    - name: Crear contenedor final ZIP para la descarga de GitHub
+    # Este paso guarda el nuevo wrapper.tzst directamente dentro de las carpetas de tu repositorio
+    - name: Guardar wrapper.tzst actualizado en el repositorio
       run: |
-        # Empaquetamos tu archivo wrapper.tzst definitivo en un ZIP compatible
-        zip -r Pipetto_Unisoc_T618_ICD_Pack.zip wrapper.tzst
-
-    - name: Publicar y guardar el archivo comprimido resultante
-      uses: actions/upload-artifact@v4
-      with:
-        name: Pack-Wrapper-Pipetto-Unisoc-ICD-TZST
-        path: Pipetto_Unisoc_T618_ICD_Pack.zip
+        mkdir -p app/src/main/assets/graphics_driver
+        cp wrapper.tzst app/src/main/assets/graphics_driver/wrapper.tzst
+        
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+        git add app/src/main/assets/graphics_driver/wrapper.tzst
+        git commit -m "Actualizar wrapper.tzst con Khronos Validation Layer para Mali GPU" || echo "No hay cambios que confirmar"
+        git push
