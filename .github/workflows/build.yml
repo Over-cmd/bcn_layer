@@ -1,4 +1,4 @@
-name: Empaquetar Wrapper Oficial Pipetto con Soporte ICD y TZST para Unisoc T618
+name: Empaquetar Wrapper Oficial Pipeta con Soporte ICD y TZST para Unisoc T618
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
   workflow_dispatch: # Permite activar el empaquetado manualmente con un botón
 
 jobs:
-  package-tzst-wrapper:
+  paquete-tzst-wrapper:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar código de tu repositorio
       uses: actions/checkout@v4
 
     - name: Instalar herramientas esenciales y compresor Zstd
@@ -20,9 +20,9 @@ jobs:
 
     - name: Crear la estructura estricta de carpetas dentro de USR
       run: |
-        # Creamos la carpeta de librerias dinamicas dentro de usr/ para cumplir el estandar Linux
+        # Creamos la carpeta de librerías dinámicas dentro de usr/ para cumplir el estándar Linux
         mkdir -p package/usr/lib
-        # Creamos la ruta estricta del sistema donde el emulador busca los archivos ICD
+        # Creamos la ruta estricta del sistema cambiando al nuevo nombre que solicitaste
         mkdir -p package/usr/share/vulkan/icd.d
 
     - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
@@ -30,10 +30,10 @@ jobs:
         # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so
         wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
 
-    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
+    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan modificado"
       run: |
-        # Configuramos el library_path apuntando unicamente a libvulkan_wrapper.so tal como solicitaste
-        cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
+        # Configuramos el Library_path apuntando a libvulkan_wrapper.so con tu nuevo nombre de archivo
+        cat <<EOF > package/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json
         {
           "ICD": {
             "api_version": "1.1.128",
@@ -47,18 +47,18 @@ jobs:
       run: |
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 Flat Build",
-          "version": "6.0.0",
-          "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial con inyeccion de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "nombre": "Pipetto Wrapper - Unisoc T618 Flat Build",
+          "versión": "6.0.0",
+          "autor": "Pipetto & Unisoc Mod",
+          "description": "Wrapper oficial con inyección de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
-          "environment": {
+          "ambiente": {
             "VULKAN_WRAPPER_VERSION": "1.1",
             "BCN_TRANSCODE_TARGET": "ASTC",
-            "MALI_TEXTURE_QUALITY": "LOW",
+            "CALIDAD_DE_TEXTURA_MALI": "BAJA",
             "IGNORE_VULKAN_1_2_EXTENSIONS": "1",
             "FORCE_VULKAN_1_1_SPOOF": "1",
-            "VK_ICD_FILENAMES": "usr/share/vulkan/icd.d/pipetto_unisoc_icd.json"
+            "VK_ICD_FILENAMES": "usr/share/vulkan/icd.d/wrapper_icd_aarch64.json"
           }
         }
         EOF
@@ -67,7 +67,7 @@ jobs:
       run: |
         # Entramos a la carpeta de trabajo
         cd package
-        # EL CAMBIO: Comprimimos el contenido plano asignando directamente el nombre wrapper.tzst
+        # Comprimimos el contenido plano asignando directamente el nombre wrapper.tzst
         tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
         cd ..
 
