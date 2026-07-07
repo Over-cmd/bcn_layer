@@ -1,4 +1,4 @@
-name: Empaquetar Wrapper Oficial Pipetto para Unisoc T618
+name: Empaquetar Wrapper Oficial Pipetto con Soporte ICD y TZST para Unisoc T618
 
 on:
   push:
@@ -6,53 +6,76 @@ on:
   workflow_dispatch: # Permite activar el empaquetado manualmente con un botón
 
 jobs:
-  package-wrapper:
+  package-tzst-wrapper:
     runs-on: ubuntu-latest
 
     steps:
     - name: Descargar codigo de tu repositorio
       uses: actions/checkout@v4
 
-    - name: Instalar herramientas de compresion
+    - name: Instalar herramientas esenciales y compresor Zstd
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget zip
+        sudo apt-get install -y wget zip zstd
 
-    - name: Descargar Binarios Oficiales Precompilados por Pipetto (Evita errores de compilacion)
+    - name: Crear la estructura estricta de carpetas para el Driver Pack
       run: |
-        mkdir -p package/vulkan/lib64
-        
-        # Descargamos directamente el binario .so estable compilado por el autor desde su repositorio oficial de Winlator
-        wget https://github.com -O package/vulkan/lib64/libvulkan_wrapper.so || \
-        wget https://github.com -O package/vulkan/lib64/libvulkan_wrapper.so
+        # Creamos las carpetas internas que lee Winlator incluyendo la ruta de la libreria (.so)
+        mkdir -p package/vulkan/lib
+        # Creamos la ruta estricta del sistema de Linux donde el emulador busca los archivos ICD
+        mkdir -p package/usr/share/vulkan/icd.d
 
-    - name: Crear el Manifiesto meta.json Optimizado para tu Unisoc T618
+    - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
       run: |
-        # Creamos el archivo de configuración que obliga a Winlator a usar el wrapper en modo Vulkan 1.1 y ASTC
+        # Descargamos el binario .so estable directo en la ruta vulkan/lib/libvulkan_wrapper.so que solicitaste
+        wget https://github.com -O package/vulkan/lib/libvulkan_wrapper.so
+
+    - name: INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan
+      run: |
+        # Creamos el manifiesto ICD que Winlator mapeara internamente para enlazar tu libvulkan_wrapper.so
+        cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
+        {
+          "ICD": {
+            "api_version": "1.1.128",
+            "library_path": "vulkan/lib/libvulkan_wrapper.so"
+          },
+          "file_format_version": "1.0.0"
+        }
+        EOF
+
+    - name: Crear el archivo meta.json Regulador de Entorno
+      run: |
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "2.8.0",
+          "name": "Pipetto Wrapper - Unisoc T618 ICD Build",
+          "version": "4.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial de Pipetto-crypto optimizado para Mali-G52 (Cortex-A75). Fuerza Vulkan 1.1, transcodifica BCn a ASTC por hardware y optimiza texturas.",
+          "description": "Wrapper oficial con inyeccion de Manifiesto ICD nativo. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
             "BCN_TRANSCODE_TARGET": "ASTC",
             "MALI_TEXTURE_QUALITY": "LOW",
             "IGNORE_VULKAN_1_2_EXTENSIONS": "1",
-            "FORCE_VULKAN_1_1_SPOOF": "1"
+            "FORCE_VULKAN_1_1_SPOOF": "1",
+            "VK_ICD_FILENAMES": "usr/share/vulkan/icd.d/pipetto_unisoc_icd.json"
           }
         }
         EOF
 
-    - name: Crear el Driver Pack en formato ZIP para Winlator
+    - name: Comprimir el paquete completo en formato nativo TZST para Winlator
       run: |
         cd package
-        zip -r ../Pipetto_Unisoc_T618_Wrapper.zip ./*
+        # Empaquetamos meta.json, vulkan/lib/ y usr/share/vulkan/icd.d/ en un .tzst limpio
+        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst ./*
+        cd ..
+
+    - name: Crear contenedor final ZIP para la descarga de GitHub
+      run: |
+        zip -r Pipetto_Unisoc_T618_ICD_Pack.zip container_pattern.tzst
 
     - name: Publicar y guardar el archivo comprimido resultante
       uses: actions/upload-artifact@v4
       with:
-        name: Pack-Wrapper-Pipetto-Unisoc
-        path: Pipetto_Unisoc_T618_Wrapper.zip
+        name: Pack-Wrapper-Pipetto-Unisoc-ICD-TZST
+        path: Pipetto_Unisoc_T618_ICD_Pack.zip
