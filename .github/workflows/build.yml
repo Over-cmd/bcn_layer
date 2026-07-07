@@ -10,15 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar codigo de tu repositorio (Codigo de Pipetto)
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Instalar herramientas esenciales de compilacion
       run: |
         sudo apt-get update
         sudo apt-get install -y meson ninja-build python3-pip wget zip
 
-    - name: Configurar Android NDK Oficial mediante Action (Evita Error 9)
+    - name: Configurar Android NDK Oficial mediante Action
       uses: android-actions/setup-android@v3
 
     - name: Instalar version exacta de NDK r26b
@@ -27,15 +29,9 @@ jobs:
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Clonar repositorio original del Wrapper de Pipetto-crypto
-      run: |
-        git clone --recursive https://github.com pipetto_src
-
     - name: Inyectar parche de compatibilidad para GPU Mali (Vulkan 1.0/1.1)
       run: |
-        cd pipetto_src
-        
-        # Modificar archivos fuente para forzar el engaño (Spoof) de version Vulkan 1.1 
+        # Modificar tus archivos fuente locales para forzar el engaño (Spoof) de version Vulkan 1.1 
         if [ -f src/wrapper.cpp ]; then
           sed -i 's/VK_API_VERSION_1_0/VK_API_VERSION_1_1/g' src/wrapper.cpp
           sed -i 's/VK_API_VERSION_1_2/VK_API_VERSION_1_1/g' src/wrapper.cpp
@@ -69,16 +65,15 @@ jobs:
 
     - name: Compilar usando el ecosistema Meson y Ninja
       run: |
-        cd pipetto_src
-        meson setup build_output --cross-file ../arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android
         ninja -C build_output
 
     - name: Organizar estructura para instalador de Winlator
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar el archivo .so compilado con las optimizaciones de Unisoc
-        cp pipetto_src/build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
+        # Copiar el archivo .so compilado directamente desde la carpeta local
+        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
@@ -108,4 +103,3 @@ jobs:
       with:
         name: Pack-Wrapper-Pipetto-Unisoc
         path: Pipetto_Unisoc_T618_Wrapper.zip
-
