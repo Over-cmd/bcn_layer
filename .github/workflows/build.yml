@@ -15,11 +15,10 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Instalar herramientas esenciales y dependencias de Vulkan Layers
+    - name: Instalar herramientas de compresion
       run: |
         sudo apt-get update
-        # Añadimos libvulkan-dev y vulkan-tools para que Meson encuentre las cabeceras nativas de capas
-        sudo apt-get install -y meson ninja-build python3-pip wget zip libvulkan-dev vulkan-tools
+        sudo apt-get install -y wget unzip zip
 
     - name: Configurar Android NDK Oficial mediante Action
       uses: android-actions/setup-android@v3
@@ -28,50 +27,35 @@ jobs:
       run: |
         sdkmanager --install "ndk;26.1.10909125"
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
+        # Añadimos el compilador Clang de Android directamente al sistema
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
+    - name: Compilacion Directa con Clang (Sin Meson)
       run: |
-        cat <<EOF > arm64-unisoc.txt
-        [binaries]
-        c = 'aarch64-linux-android24-clang'
-        cpp = 'aarch64-linux-android24-clang++'
-        ar = 'aarch64-linux-android-ar'
-        strip = 'aarch64-linux-android-strip'
-
-        [properties]
-        c_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75']
-        cpp_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75', '-std=c++17']
-
-        [host_machine]
-        system = 'android'
-        cpu_family = 'aarch64'
-        cpu = 'cortex-a75'
-        endian = 'little'
-        EOF
-
-    - name: Configurar entorno usando el script nativo del proyecto
-      run: |
-        # Pasamos las banderas de optimizacion de entorno nativas de Meson
-        # Desactivamos los tests para evitar que busque entornos de ejecucion de PC
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dtests=disabled --libdir=lib64
+        mkdir -p build_output
         
-    - name: Compilar codigo nativo con Ninja
-      run: |
-        ninja -C build_output
+        # Rastrear todos los archivos .cpp en la raiz o en /src (se adapta a como los tenga Pipetto)
+        CPP_FILES=$(find . -maxdepth 2 -name "*.cpp" | tr '\n' ' ')
+        echo "Archivos encontrados para compilar: $CPP_FILES"
+        
+        # Ejecutamos el compilador oficial de Android inyectando tus optimizaciones nativas
+        aarch64-linux-android24-clang++ -shared -fPIC -O3 \
+          -DMALI_G52 -DVULKAN_1_1_ONLY -DENABLE_ASTC_TRANSCODE -DFORCE_VULKAN_1_1_SPOOF \
+          -mcpu=cortex-a75 -std=c++17 \
+          $CPP_FILES -o build_output/libvulkan_wrapper.so -lvulkan -lstdc++
 
     - name: Organizar estructura para instalador de Winlator
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Buscar de forma dinamica la libreria compilada .so (sea bcn_layer o vulkan_wrapper)
-        find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
+        # Copiar la libreria binaria recien creada
+        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "1.8.5",
+          "version": "1.9.0",
           "author": "Pipetto & Unisoc Mod",
           "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
