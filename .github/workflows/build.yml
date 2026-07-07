@@ -1,82 +1,39 @@
-name: Compilar bcn_layer y empaquetar como wrapper.tzst
+name: Empaquetar Wrapper Oficial Pipetto con Soporte ICD y TZST para Unisoc T618
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite activar la compilación manualmente con un botón
+  workflow_dispatch: # Permite activar el empaquetado manualmente con un botón
 
 jobs:
-  build-and-pack-tzst:
+  package-tzst-wrapper:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio local
+    - name: Descargar codigo de tu repositorio
       uses: actions/checkout@v4
-      with:
-        submodules: recursive # Descarga Granite y las dependencias de shaders nativas obligatorias
 
-    - name: Instalar herramientas esenciales de compilacion y compresor Zstd
+    - name: Instalar herramientas esenciales y compresor Zstd
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip wget zip zstd libvulkan-dev
+        sudo apt-get install -y wget zip zstd
 
-    - name: Configurar Android NDK Oficial mediante Action
-      uses: android-actions/setup-android@v3
-
-    - name: Instalar version exacta de NDK r26b
+    - name: Crear la estructura estricta de carpetas dentro de USR
       run: |
-        sdkmanager --install "ndk;26.1.10909125"
-        echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
-        echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        # Creamos la carpeta de librerias dinamicas dentro de usr/ para cumplir el estandar Linux
+        mkdir -p package/usr/lib
+        # Creamos la ruta estricta del sistema donde el emulador busca los archivos ICD
+        mkdir -p package/usr/share/vulkan/icd.d
 
-    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
+    - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
       run: |
-        cat <<EOF > arm64-unisoc.txt
-        [binaries]
-        c = 'aarch64-linux-android24-clang'
-        cpp = 'aarch64-linux-android24-clang++'
-        ar = 'aarch64-linux-android-ar'
-        strip = 'aarch64-linux-android-strip'
-
-        [properties]
-        c_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75']
-        cpp_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75', '-std=c++17']
-
-        [host_machine]
-        system = 'android'
-        cpu_family = 'aarch64'
-        cpu = 'cortex-a75'
-        endian = 'little'
-        EOF
-
-    - name: Configurar e Inicializar Meson Limpio
-      run: |
-        # EL CAMBIO: Especificamos el punto '.' (origen) antes de la carpeta 'build_output' (destino)
-        # Esto le aclara a Meson donde buscar el archivo meson.build legítimo de tu clon
-        meson setup . build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
-
-    - name: Compilar codigo nativo de tu capa BCN con Ninja
-      run: |
-        ninja -C build_output
-
-    - name: "ESTRUCTURA PLANA: Organizar carpetas dentro de la raiz del paquete"
-      run: |
-        # Creamos el arbol de directorios de Linux exigido dentro de la carpeta temporal 'pack'
-        mkdir -p pack/usr/lib
-        mkdir -p pack/usr/share/vulkan/icd.d
-        
-        # Buscamos tu libreria .so recien compilada por Clang y la movemos a usr/lib/
-        find build_output/ -name "*.so" -exec cp {} pack/usr/lib/libvulkan_wrapper.so \;
-        
-        # Si por alguna razon el find falla, ponemos un archivo de respaldo estable de Pipetto
-        if [ ! -f pack/usr/lib/libvulkan_wrapper.so ]; then
-          wget https://github.com -O pack/usr/lib/libvulkan_wrapper.so
-        fi
+        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so
+        wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
 
     - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
       run: |
-        # Configuramos el library_path apuntando unicamente a la libreria local plano
-        cat <<EOF > pack/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
+        # Configuramos el library_path apuntando unicamente a libvulkan_wrapper.so tal como solicitaste
+        cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
         {
           "ICD": {
             "api_version": "1.1.128",
@@ -88,12 +45,12 @@ jobs:
 
     - name: Crear el archivo meta.json Regulador de Entorno
       run: |
-        cat <<EOF > pack/meta.json
+        cat <<EOF > package/meta.json
         {
-          "name": "Pipetto BCN - Unisoc T618 Build",
-          "version": "8.0.0",
+          "name": "Pipetto Wrapper - Unisoc T618 Flat Build",
+          "version": "6.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Tu capa BCN optimizada para Mali-G52. Fuerza Vulkan 1.1 y transcodifica a ASTC de forma plana.",
+          "description": "Wrapper oficial con inyeccion de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
@@ -106,16 +63,21 @@ jobs:
         }
         EOF
 
-    - name: "EMPAQUETADO PERFECTO: Comprimir en formato nativo wrapper.tzst"
+    - name: "COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio"
       run: |
-        # Nos movemos adentro de la carpeta pack para evitar que se guarde un directorio raiz intermedio
-        cd pack
-        # Comprimimos directamente usr/ y meta.json en el primer nivel del archivo wrapper.tzst
+        # Entramos a la carpeta de trabajo
+        cd package
+        # EL CAMBIO: Comprimimos el contenido plano asignando directamente el nombre wrapper.tzst
         tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
         cd ..
 
-    - name: Guardar el paquete comprimido en un contenedor ZIP para descargar
+    - name: Crear contenedor final ZIP para la descarga de GitHub
+      run: |
+        # Empaquetamos tu archivo wrapper.tzst definitivo en un ZIP compatible
+        zip -r Pipetto_Unisoc_T618_ICD_Pack.zip wrapper.tzst
+
+    - name: Publicar y guardar el archivo comprimido resultante
       uses: actions/upload-artifact@v4
       with:
-        name: Tu-Wrapper-TZST-UnisocT618
-        path: wrapper.tzst
+        name: Pack-Wrapper-Pipetto-Unisoc-ICD-TZST
+        path: Pipetto_Unisoc_T618_ICD_Pack.zip
