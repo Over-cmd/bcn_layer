@@ -1,39 +1,91 @@
-name: Actualizar wrapper.tzst con Khronos Validation Layer
+name: Generar layer.tzst Nativo Vulkan 1.1 para Unisoc T618
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
+  workflow_dispatch: # Permite compilar a mano con un botón
 
 jobs:
-  update-wrapper:
+  build-layer:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar el código de tu repositorio
       uses: actions/checkout@v4
 
-    - name: Instalar herramientas esenciales y compresor Zstd
+    - name: Instalar herramientas del sistema y Zstd
       run: |
         sudo apt-get update
         sudo apt-get install -y wget zip zstd
 
-    - name: Crear la estructura estricta de carpetas dentro de USR
+    - name: Crear árbol de directorios estándar Linux
       run: |
         mkdir -p package/usr/lib
         mkdir -p package/usr/share/vulkan/icd.d
 
-    - name: Extraer Binario de tu Wrapper y la Capa de Validación de Khronos
+    - name: Extraer binario de Khronos y tu código modificado
       run: |
-        # Intentamos copiar tu wrapper existente si ya lo tenías en el repositorio, o puedes descargarlo aquí
-        if [ -f "app/src/main/assets/graphics_driver/wrapper.tzst" ]; then
-          tar -xf app/src/main/assets/graphics_driver/wrapper.tzst -C package/
-        fi
-        
-        # DESCARGA CRÍTICA: Traemos el binario oficial de Khronos Validation Layer para Android AArch64
+        # 1. Descargamos la capa oficial de Khronos de 64 bits para Android (el puente)
         wget https://github.com -O khronos.tar.gz
         tar -xzf khronos.tar.gz
         cp android-binaries-v1.3.261/arm64-v8a/libVkLayer_khronos_validation.so package/usr/lib/
+        
+        # 2. Copia aquí tu archivo de biblioteca modificado (.so) del BCn Layer si ya lo tienes en el repositorio.
+        # Asegúrate de que tu binario termine dentro de: package/usr/lib/
+
+    - name: Crear Manifiesto de Capa Vulkan (wrapper_icd_aarch64.json)
+      run: |
+        cat <<EOF > package/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json
+        {
+          "file_format_version": "1.0.0",
+          "layer": {
+            "name": "VK_LAYER_KHRONOS_validation",
+            "type": "GLOBAL",
+            "library_path": "libVkLayer_khronos_validation.so",
+            "api_version": "1.1.128",
+            "implementation_version": "1",
+            "description": "BCN Layer Mod Vulkan 1.1 - Unisoc T618"
+          }
+        }
+        EOF
+
+    - name: Crear Regulador de Entorno Especial para Mali (meta.json)
+      run: |
+        cat <<EOF > package/meta.json
+        {
+          "nombre": "BCN Layer Vulkan 1.1 (Unisoc T618)",
+          "versión": "1.1.0",
+          "autor": "Usuario Mod (Pippetocrypto base)",
+          "description": "Capa modificada para transcodificación BCn a ASTC optimizada para Mali-G52.",
+          "driverType": "VulkanWrapper",
+          "ambiente": {
+            "VULKAN_WRAPPER_VERSION": "1.1",
+            "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json",
+            "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation",
+            "MESA_VK_IGNORE_CONFORMANCE_WARNINGS": "1",
+            "DXVK_FILTER_DEVICE_NAME": "Mali"
+          }
+        }
+        EOF
+
+    - name: Comprimir contenido plano en formato nativo TZST
+      run: |
+        cd package
+        # Comprimimos directamente el contenido plano usando zstd de nivel 19
+        tar -I 'zstd -19 -T0' -cf ../layer.tzst *
+        cd ..
+
+    - name: Guardar layer.tzst en la carpeta de assets de tu repositorio
+      run: |
+        mkdir -p app/src/main/assets/graphics_driver
+        cp layer.tzst app/src/main/assets/graphics_driver/layer.tzst
+        
+        # El bot guarda de forma automática el archivo comprimido final en tu repositorio
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+        git add app/src/main/assets/graphics_driver/layer.tzst
+        git commit -m "Actualización automatizada de layer.tzst puro para Mali-G52" || echo "No hay cambios que guardar"
+        git push
         
         # Si tienes tu binario libvulkan_wrapper.so en otra ruta, asegúrate de que esté en package/usr/lib/
 
