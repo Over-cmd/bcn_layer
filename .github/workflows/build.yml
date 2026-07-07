@@ -18,26 +18,26 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y wget zip zstd
 
-    - name: Crear la estructura estricta de carpetas para el Driver Pack
+    - name: Crear la estructura estricta de carpetas dentro de USR
       run: |
-        # Creamos las carpetas internas que lee Winlator incluyendo la ruta de la libreria (.so)
-        mkdir -p package/vulkan/lib
-        # Creamos la ruta estricta del sistema de Linux donde el emulador busca los archivos ICD
+        # Creamos la carpeta de librerias dinámicas dentro de usr/ para cumplir el estándar Linux
+        mkdir -p package/usr/lib
+        # Creamos la ruta estricta del sistema donde el emulador busca los archivos ICD
         mkdir -p package/usr/share/vulkan/icd.d
 
     - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
       run: |
-        # Descargamos el binario .so estable directo en la ruta vulkan/lib/libvulkan_wrapper.so que solicitaste
-        wget https://github.com -O package/vulkan/lib/libvulkan_wrapper.so
+        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so que solicitaste
+        wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
 
     - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
       run: |
-        # Creamos el manifiesto ICD que Winlator mapeara internamente para enlazar tu libvulkan_wrapper.so
+        # Creamos el manifiesto ICD apuntando de forma estricta a la nueva ruta usr/lib/
         cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
         {
           "ICD": {
             "api_version": "1.1.128",
-            "library_path": "vulkan/lib/libvulkan_wrapper.so"
+            "library_path": "usr/lib/libvulkan_wrapper.so"
           },
           "file_format_version": "1.0.0"
         }
@@ -47,10 +47,10 @@ jobs:
       run: |
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 ICD Build",
-          "version": "4.0.0",
+          "name": "Pipetto Wrapper - Unisoc T618 USR Build",
+          "version": "5.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial con inyeccion de Manifiesto ICD nativo. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "description": "Wrapper oficial con inyeccion de Manifiesto ICD nativo unificado en USR. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
@@ -66,7 +66,7 @@ jobs:
     - name: Comprimir el paquete completo en formato nativo TZST para Winlator
       run: |
         cd package
-        # Empaquetamos meta.json, vulkan/lib/ y usr/share/vulkan/icd.d/ en un .tzst limpio
+        # Empaquetamos meta.json y la carpeta estructural usr/ en un .tzst limpio
         tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst ./*
         cd ..
 
