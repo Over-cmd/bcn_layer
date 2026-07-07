@@ -27,17 +27,17 @@ jobs:
 
     - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
       run: |
-        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so que solicitaste
+        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so
         wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
 
     - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
       run: |
-        # Creamos el manifiesto ICD apuntando de forma estricta a la nueva ruta usr/lib/
+        # Configuramos el library_path apuntando unicamente a libvulkan_wrapper.so tal como solicitaste
         cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
         {
           "ICD": {
             "api_version": "1.1.128",
-            "library_path": "usr/lib/libvulkan_wrapper.so"
+            "library_path": "libvulkan_wrapper.so"
           },
           "file_format_version": "1.0.0"
         }
@@ -47,10 +47,10 @@ jobs:
       run: |
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 USR Build",
-          "version": "5.0.0",
+          "name": "Pipetto Wrapper - Unisoc T618 Flat Build",
+          "version": "6.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial con inyeccion de Manifiesto ICD nativo unificado en USR. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "description": "Wrapper oficial con inyeccion de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
@@ -63,11 +63,12 @@ jobs:
         }
         EOF
 
-    - name: Comprimir el paquete completo en formato nativo TZST para Winlator
+    - name: COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio
       run: |
+        # Entramos a la carpeta para que la compresion no incluya el directorio 'package'
         cd package
-        # Empaquetamos meta.json y la carpeta estructural usr/ en un .tzst limpio
-        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst ./*
+        # El comando compila directamente usr/ y meta.json en la raiz misma del archivo .tzst
+        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst ./usr ./meta.json
         cd ..
 
     - name: Crear contenedor final ZIP para la descarga de GitHub
