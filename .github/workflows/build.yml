@@ -27,12 +27,12 @@ jobs:
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Clonar el Repositorio de Drivers Base Autenticado (Evita Error 128)
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Inyecta la llave de seguridad automatica de GitHub
+    - name: Descargar codigo fuente del Driver via HTTP (Evita Error 128)
       run: |
-        # Usamos la URL con el token para saltarnos las restricciones de clonación de la plataforma
-        git clone --recursive https://x-access-token:${GH_TOKEN}@://github.com driver_src
+        # Descargamos el codigo directamente en un archivo ZIP publico sin pasar por Git
+        wget https://github.com -O driver.zip
+        unzip driver.zip
+        mv bionic-vulkan-wrapper-master driver_src
 
     - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
       run: |
@@ -75,7 +75,7 @@ jobs:
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto-Leegao T618 Custom Wrapper",
-          "version": "2.2.0",
+          "version": "2.3.0",
           "author": "Pipetto & Unisoc Mod",
           "description": "Wrapper optimizado para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
