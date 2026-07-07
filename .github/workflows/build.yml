@@ -15,10 +15,11 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Instalar herramientas esenciales de compilacion
+    - name: Instalar herramientas esenciales y dependencias de Vulkan Layers
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip wget zip
+        # Añadimos libvulkan-dev y vulkan-tools para que Meson encuentre las cabeceras nativas de capas
+        sudo apt-get install -y meson ninja-build python3-pip wget zip libvulkan-dev vulkan-tools
 
     - name: Configurar Android NDK Oficial mediante Action
       uses: android-actions/setup-android@v3
@@ -51,9 +52,9 @@ jobs:
 
     - name: Configurar entorno usando el script nativo del proyecto
       run: |
-        # Usamos el comando nativo "setup" de Meson leyendo el meson.build oficial que ya viene en tu fork
-        # Le indicamos que el tipo de construcción sea estrictamente "release" para exprimir la potencia del T618
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
+        # Pasamos las banderas de optimizacion de entorno nativas de Meson
+        # Desactivamos los tests para evitar que busque entornos de ejecucion de PC
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dtests=disabled --libdir=lib64
         
     - name: Compilar codigo nativo con Ninja
       run: |
@@ -63,14 +64,14 @@ jobs:
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Buscar el archivo .so en el directorio de salida (por si cambia el nombre de la libreria)
+        # Buscar de forma dinamica la libreria compilada .so (sea bcn_layer o vulkan_wrapper)
         find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "1.8.0",
+          "version": "1.8.5",
           "author": "Pipetto & Unisoc Mod",
           "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
