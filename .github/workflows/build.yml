@@ -49,10 +49,11 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Configurar e Inicializar Meson Limpio (Sin bloques inestables)
+    - name: Configurar e Inicializar Meson Limpio
       run: |
-        # Inicializamos Meson de forma estricta leyendo el archivo meson.build legítimo de tu clon
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
+        # EL CAMBIO: Especificamos el punto '.' (origen) antes de la carpeta 'build_output' (destino)
+        # Esto le aclara a Meson donde buscar el archivo meson.build legítimo de tu clon
+        meson setup . build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
 
     - name: Compilar codigo nativo de tu capa BCN con Ninja
       run: |
