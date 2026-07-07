@@ -1,39 +1,36 @@
-name: Empaquetar Wrapper Oficial Pipetto con Soporte ICD y TZST para Unisoc T618
+name: Compilar Winlator con tu bcn_layer empaquetado como wrapper.tzst
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite activar el empaquetado manualmente con un botón
+  workflow_dispatch: # Permite activar el proceso manualmente con un botón
 
 jobs:
-  package-tzst-wrapper:
+  build-and-inject:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar codigo de tu repositorio local
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
 
-    - name: Instalar herramientas esenciales y compresor Zstd
+    - name: Instalar herramientas Java y de compresion binaria
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget zip zstd
+        sudo apt-get install -y openjdk-17-jdk apksigner zip unzip wget zstd
 
-    - name: Crear la estructura estricta de carpetas dentro de USR
+    - name: "PASO 1: Descargar tu binario bcn_layer de Pipetto"
       run: |
-        # Creamos la carpeta de librerias dinámicas dentro de usr/ para cumplir el estándar Linux
-        mkdir -p package/usr/lib
-        # Creamos la ruta estricta del sistema donde el emulador busca los archivos ICD
-        mkdir -p package/usr/share/vulkan/icd.d
+        mkdir -p bcn_package/usr/lib
+        mkdir -p bcn_package/usr/share/vulkan/icd.d
+        
+        # Extraemos el binario estable de bcn_layer de Pipetto
+        wget https://github.com -O bcn_package/usr/lib/libvulkan_wrapper.so
 
-    - name: Extraer Binario Oficial Precompilado de Pipetto (32/64 cross)
+    - name: "PASO 2: Introducir ICD plano apuntando a tu bcn_layer"
       run: |
-        # Descargamos el binario .so estable directo en la ruta usr/lib/libvulkan_wrapper.so
-        wget https://github.com -O package/usr/lib/libvulkan_wrapper.so
-
-    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
-      run: |
-        # Configuramos el library_path apuntando unicamente a libvulkan_wrapper.so tal como solicitaste
-        cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
+        cat <<EOF > bcn_package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
         {
           "ICD": {
             "api_version": "1.1.128",
@@ -43,14 +40,14 @@ jobs:
         }
         EOF
 
-    - name: Crear el archivo meta.json Regulador de Entorno
+    - name: "PASO 3: Crear el manifiesto meta.json regulador"
       run: |
-        cat <<EOF > package/meta.json
+        cat <<EOF > bcn_package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 Flat Build",
-          "version": "6.0.0",
+          "name": "Pipetto BCN - Unisoc T618 Build",
+          "version": "7.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper oficial con inyeccion de Manifiesto ICD plano en la raiz. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "description": "Capa BCN original empaquetada como wrapper.tzst. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
@@ -63,20 +60,41 @@ jobs:
         }
         EOF
 
-    - name: "COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio"
+    - name: "PASO 4: COMPILACION EN LA RAIZ: Crear tu wrapper.tzst limpio"
       run: |
-        # Entramos a la carpeta de trabajo
-        cd package
-        # Usamos el comodin * para empaquetar unicamente el contenido suelto (usr y meta.json) en la raiz del archivo
-        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst *
+        cd bcn_package
+        # Usamos el comodín * desde adentro para que usr/ y meta.json queden planos en la raíz del paquete
+        tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
         cd ..
 
-    - name: Crear contenedor final ZIP para la descarga de GitHub
+    - name: "PASO 5: OBTENER BASE LIMPIA: Descargar APK Oficial de Winlator"
       run: |
-        zip -r Pipetto_Unisoc_T618_ICD_Pack.zip container_pattern.tzst
+        wget -L https://github.com -O base.apk
 
-    - name: Publicar y guardar el archivo comprimido resultante
+    - name: "PASO 6: SUSTITUCION DIRECTA: Inyectar tu wrapper.tzst recien creado"
+      run: |
+        # Creamos las carpetas de recursos internos exigidas por el menu de Winlator
+        mkdir -p assets/graphics_drivers
+        mkdir -p assets/graphics-drivers
+        
+        # Copiamos tu archivo empaquetado en las rutas de la GPU de la APK
+        cp wrapper.tzst assets/graphics_drivers/wrapper.tzst
+        cp wrapper.tzst assets/graphics-drivers/wrapper.tzst
+        
+        # Forzamos la actualizacion/sobreescritura de los assets dentro de la APK binaria
+        zip -ur base.apk assets/
+
+    - name: Generar Firma Digital Automatizada para Android
+      run: |
+        keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 \
+          -alias my-alias -storepass android -keypass android -dname "CN=UnisocMod, OU=Dev, O=Winlator, L=ES, S=ES, C=ES"
+
+    - name: Firmar la APK Modificada con apksigner
+      run: |
+        apksigner sign --ks my-release-key.jks --ks-pass pass:android --out Winlator_UnisocT618_Final.apk base.apk
+
+    - name: Publicar y guardar tu nueva APK terminada para descargar
       uses: actions/upload-artifact@v4
       with:
-        name: Pack-Wrapper-Pipetto-Unisoc-ICD-TZST
-        path: Pipetto_Unisoc_T618_ICD_Pack.zip
+        name: Winlator-Ludashi-BCN-Final-APK
+        path: Winlator_UnisocT618_Final.apk
