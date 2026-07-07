@@ -10,8 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar codigo local de tu propio Fork (Evita todo error de red)
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Instalar herramientas esenciales de compilacion
       run: |
@@ -26,11 +28,6 @@ jobs:
         sdkmanager --install "ndk;26.1.10909125"
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-
-    - name: Descargar codigo fuente del Driver de forma limpia (Evita Error 9 y 128)
-      run: |
-        # Usamos clonacion superficial sin historiales ni submodulos bloqueados por tokens
-        git clone --depth=1 https://github.com driver_src
 
     - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
       run: |
@@ -52,30 +49,51 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Configurar e Inicializar Meson de forma limpia (Forzado Android)
+    - name: Generar Meson minimalista sobre tus archivos locales (Sin clonar nada)
       run: |
-        cd driver_src
-        meson setup build_output --cross-file ../arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android -Dgles1=disabled -Dgles2=disabled
+        # Creamos una configuracion limpia basada exclusivamente en lo que tienes en pantalla
+        cat <<EOF > meson.build
+        project('unisoc_wrapper', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
+        
+        # El comando 'files' busca tus archivos fuentes locales del Fork
+        src_files = files()
+        if import('fs').exists('src/wrapper.cpp')
+          src_files += files('src/wrapper.cpp', 'src/transcoder.cpp')
+        else
+          src_files += files('wrapper.cpp', 'transcoder.cpp')
+        endif
+        
+        add_project_arguments('-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', language: ['c', 'cpp'])
+        
+        shared_library('vulkan_wrapper',
+          src_files,
+          name_prefix: 'lib',
+          install: true
+        )
+        EOF
+
+    - name: Configurar e Inicializar Meson
+      run: |
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
         
     - name: Compilar codigo nativo con Ninja
       run: |
-        cd driver_src
         ninja -C build_output
 
     - name: Organizar estructura para instalador de Winlator
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar de forma segura el archivo .so resultante de la compilación limpia
-        cp driver_src/build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
+        # Copiar de forma segura el archivo .so compilado de tu codigo local
+        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto-Leegao T618 Custom Wrapper",
-          "version": "2.4.0",
+          "name": "Pipetto-Unisoc T618 Custom Wrapper",
+          "version": "2.5.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
+          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75) compilado desde tu codigo local. Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
