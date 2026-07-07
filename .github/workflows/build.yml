@@ -3,7 +3,7 @@ name: Compilacion Oficial Estilo Pipetto para Unisoc T618
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite activar la compilacion manualmente con un boton
+  workflow_dispatch: # Permite activar la compilación manualmente con un botón
 
 jobs:
   build-pipetto-unisoc:
@@ -16,14 +16,16 @@ jobs:
     - name: Instalar herramientas esenciales de compilacion
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip wget unzip zip
+        sudo apt-get install -y meson ninja-build python3-pip wget zip
 
-    - name: Configurar Android NDK oficial (r26b)
+    - name: Configurar Android NDK Oficial mediante Action (Evita Error 9)
+      uses: android-actions/setup-android@v3
+
+    - name: Instalar version exacta de NDK r26b
       run: |
-        wget https://google.com
-        unzip -q android-ndk-r26b-linux.zip
-        echo "ANDROID_NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r26b" >> $GITHUB_ENV
-        echo "$GITHUB_WORKSPACE/android-ndk-r26b/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+        sdkmanager --install "ndk;26.1.10909125"
+        echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
+        echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
     - name: Clonar repositorio original del Wrapper de Pipetto-crypto
       run: |
@@ -106,3 +108,4 @@ jobs:
       with:
         name: Pack-Wrapper-Pipetto-Unisoc
         path: Pipetto_Unisoc_T618_Wrapper.zip
+
