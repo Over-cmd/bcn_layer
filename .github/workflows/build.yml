@@ -65,10 +65,10 @@ jobs:
 
     - name: "COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio"
       run: |
-        # Entramos a la carpeta para que la compresion no incluya el directorio 'package'
+        # Entramos a la carpeta de trabajo
         cd package
-        # El comando compila directamente usr/ y meta.json en la raiz misma del archivo .tzst
-        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst ./usr ./meta.json
+        # Usamos el comodin * para empaquetar unicamente el contenido suelto (usr y meta.json) en la raiz del archivo
+        tar -I 'zstd -19 -T0' -cf ../container_pattern.tzst *
         cd ..
 
     - name: Crear contenedor final ZIP para la descarga de GitHub
