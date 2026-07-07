@@ -27,10 +27,12 @@ jobs:
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Clonar el Repositorio de Drivers Base Completo (Leegao Backend)
+    - name: Clonar el Repositorio de Drivers Base Autenticado (Evita Error 128)
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Inyecta la llave de seguridad automatica de GitHub
       run: |
-        # Clonamos de forma recursiva el backend compatible con el entorno de Pipetto
-        git clone --recursive https://github.com driver_src
+        # Usamos la URL con el token para saltarnos las restricciones de clonación de la plataforma
+        git clone --recursive https://x-access-token:${GH_TOKEN}@://github.com driver_src
 
     - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
       run: |
@@ -55,7 +57,6 @@ jobs:
     - name: Configurar e Inicializar Meson de forma limpia (Forzado Android)
       run: |
         cd driver_src
-        # Usamos el script de inicialización nativo del Driver inyectando exclusión de ventanas Linux
         meson setup build_output --cross-file ../arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android -Dgles1=disabled -Dgles2=disabled
         
     - name: Compilar codigo nativo con Ninja
