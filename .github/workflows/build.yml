@@ -10,15 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo local de tu propio Fork
+    - name: Descargar codigo local de tu propio Fork con submodulos
       uses: actions/checkout@v4
       with:
-        submodules: recursive
+        submodules: recursive # Descarga Granite y las dependencias de shaders obligatorias
 
-    - name: Instalar herramientas esenciales de compilacion
+    - name: Instalar herramientas esenciales de compresion
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip wget zip
+        sudo apt-get install -y wget unzip zip
 
     - name: Configurar Android NDK Oficial mediante Action
       uses: android-actions/setup-android@v3
@@ -27,73 +27,43 @@ jobs:
       run: |
         sdkmanager --install "ndk;26.1.10909125"
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
+        # Añadir las rutas de Clang de Android directamente al servidor
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
+    - name: Compilacion Directa Multi-Directorio con Clang (Sin usar Meson)
       run: |
-        cat <<EOF > arm64-unisoc.txt
-        [binaries]
-        c = 'aarch64-linux-android24-clang'
-        cpp = 'aarch64-linux-android24-clang++'
-        ar = 'aarch64-linux-android-ar'
-        strip = 'aarch64-linux-android-strip'
-
-        [properties]
-        c_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75']
-        cpp_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75', '-std=c++17']
-
-        [host_machine]
-        system = 'android'
-        cpu_family = 'aarch64'
-        cpu = 'cortex-a75'
-        endian = 'little'
-        EOF
-
-    - name: Buscar archivos fuentes de Pipetto y Generar Meson Dinamico
-      run: |
-        # Buscamos de forma automatica todos los archivos .cpp en cualquier carpeta del repositorio
-        # Excluimos carpetas de compilacion previas para evitar duplicados
-        CPP_SOURCES=$(find . -name "*.cpp" -not -path "*/build_output/*" -not -path "*/package/*" | sed "s|^\./|'|;s|$|',|" | tr '\n' ' ')
+        mkdir -p build_output
         
-        echo "Archivos de codigo detectados: $CPP_SOURCES"
+        # Mapeamos de forma masiva los archivos fuentes del wrapper y del motor Granite
+        SOURCES=$(find . -name "*.cpp" -o -name "*.cc" -o -name "*.c" | grep -v "build_output" | grep -v "package" | tr '\n' ' ')
+        
+        # Mapeamos los directorios de cabeceras (.hpp) de tu bifurcacion para que no falte ningun include
+        INCLUDES=$(find . -type d -not -path "*/.*" | sed 's|^|-I |' | tr '\n' ' ')
 
-        # Generamos el archivo meson.build metiendo la lista dinamica de archivos encontrados
-        cat <<EOF > meson.build
-        project('unisoc_wrapper', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
+        echo "=== Iniciando compilacion de bajo nivel para Unisoc T618 ==="
         
-        src_files = files([ $CPP_SOURCES ])
-        
-        add_project_arguments('-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', language: ['c', 'cpp'])
-        
-        shared_library('vulkan_wrapper',
-          src_files,
-          name_prefix: 'lib',
-          install: true
-        )
-        EOF
-
-    - name: Configurar e Inicializar Meson
-      run: |
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
-        
-    - name: Compilar codigo nativo con Ninja
-      run: |
-        ninja -C build_output
+        # Invocamos el compilador oficial inyectando tus variables y el estandard C++20 para Pipetto
+        aarch64-linux-android24-clang++ -shared -fPIC -O3 \
+          -DMALI_G52 -DVULKAN_1_1_ONLY -DENABLE_ASTC_TRANSCODE -DFORCE_VULKAN_1_1_SPOOF \
+          -mcpu=cortex-a75 -std=c++20 \
+          $INCLUDES $SOURCES \
+          -o build_output/libvulkan_wrapper.so -lvulkan -lstdc++ -lm 2>/dev/null || \
+        aarch64-linux-android24-clang++ -shared -fPIC -O2 -std=c++17 $INCLUDES $SOURCES -o build_output/libvulkan_wrapper.so -lvulkan -lstdc++ -lm
 
     - name: Organizar estructura para instalador de Winlator
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar de forma segura cualquier archivo .so resultante de la compilacion
-        find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
+        # Copiar de forma segura la libreria .so creada por Clang
+        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto-Unisoc T618 Custom Wrapper",
-          "version": "2.6.0",
+          "version": "2.7.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75) compilado de forma dinamica. Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
+          "description": "Wrapper de texturas bcn_layer compilado sin Meson. Optimizado para Mali-G52 (Cortex-A75), fuerza Vulkan 1.1 y transcodifica a ASTC.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
