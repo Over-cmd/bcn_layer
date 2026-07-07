@@ -63,7 +63,7 @@ jobs:
         }
         EOF
 
-    - name: COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio
+    - name: "COMPILACION DIRECTA EN LA RAIZ: Comprimir en formato nativo TZST sin carpetas de por medio"
       run: |
         # Entramos a la carpeta para que la compresion no incluya el directorio 'package'
         cd package
