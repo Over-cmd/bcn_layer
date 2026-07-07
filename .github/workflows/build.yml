@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo local de tu propio Fork (Evita todo error de red)
+    - name: Descargar codigo local de tu propio Fork
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -49,19 +49,19 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Generar Meson minimalista sobre tus archivos locales (Sin clonar nada)
+    - name: Buscar archivos fuentes de Pipetto y Generar Meson Dinamico
       run: |
-        # Creamos una configuracion limpia basada exclusivamente en lo que tienes en pantalla
+        # Buscamos de forma automatica todos los archivos .cpp en cualquier carpeta del repositorio
+        # Excluimos carpetas de compilacion previas para evitar duplicados
+        CPP_SOURCES=$(find . -name "*.cpp" -not -path "*/build_output/*" -not -path "*/package/*" | sed "s|^\./|'|;s|$|',|" | tr '\n' ' ')
+        
+        echo "Archivos de codigo detectados: $CPP_SOURCES"
+
+        # Generamos el archivo meson.build metiendo la lista dinamica de archivos encontrados
         cat <<EOF > meson.build
         project('unisoc_wrapper', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
         
-        # El comando 'files' busca tus archivos fuentes locales del Fork
-        src_files = files()
-        if import('fs').exists('src/wrapper.cpp')
-          src_files += files('src/wrapper.cpp', 'src/transcoder.cpp')
-        else
-          src_files += files('wrapper.cpp', 'transcoder.cpp')
-        endif
+        src_files = files([ $CPP_SOURCES ])
         
         add_project_arguments('-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', language: ['c', 'cpp'])
         
@@ -84,16 +84,16 @@ jobs:
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar de forma segura el archivo .so compilado de tu codigo local
-        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
+        # Copiar de forma segura cualquier archivo .so resultante de la compilacion
+        find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto-Unisoc T618 Custom Wrapper",
-          "version": "2.5.0",
+          "version": "2.6.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75) compilado desde tu codigo local. Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
+          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75) compilado de forma dinamica. Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
