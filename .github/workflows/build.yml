@@ -13,7 +13,7 @@ jobs:
     - name: Descargar codigo de tu repositorio local
       uses: actions/checkout@v4
       with:
-        submodules: recursive # Descarga Granite y las dependencias de shaders nativas si existen
+        submodules: recursive # Descarga Granite y las dependencias de shaders nativas obligatorias
 
     - name: Instalar herramientas esenciales de compilacion y compresor Zstd
       run: |
@@ -49,17 +49,10 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Configurar e Inicializar Meson
+    - name: Configurar e Inicializar Meson Limpio (Sin bloques inestables)
       run: |
-        # Intentamos usar el meson.build nativo si existe, si no, creamos un fallback rápido
-        if [ ! -f meson.build ]; then
-          cat <<EOF > meson.build
-          project('bcn_layer', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
-          src_files = files(find_program('find').path(), '.', '-name', '*.cpp')
-          shared_library('vulkan_wrapper', src_files, name_prefix: 'lib', install: true)
-          EOF
-        fi
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release || meson setup build_output --cross-file arm64-unisoc.txt
+        # Inicializamos Meson de forma estricta leyendo el archivo meson.build legítimo de tu clon
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
 
     - name: Compilar codigo nativo de tu capa BCN con Ninja
       run: |
