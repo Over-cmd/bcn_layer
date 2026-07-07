@@ -30,7 +30,7 @@ jobs:
         # Descargamos el binario .so estable directo en la ruta vulkan/lib/libvulkan_wrapper.so que solicitaste
         wget https://github.com -O package/vulkan/lib/libvulkan_wrapper.so
 
-    - name: INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan
+    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
       run: |
         # Creamos el manifiesto ICD que Winlator mapeara internamente para enlazar tu libvulkan_wrapper.so
         cat <<EOF > package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
