@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo de tu repositorio
+    - name: Descargar codigo de tu repositorio (Fork de Pipetto)
       uses: actions/checkout@v4
       with:
         submodules: recursive
@@ -29,7 +29,7 @@ jobs:
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-    - name: Crear archivo de configuracion cruzada (Cross-File) Optimizada para Unisoc
+    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
       run: |
         cat <<EOF > arm64-unisoc.txt
         [binaries]
@@ -49,10 +49,33 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Limpiar y Configurar entorno con Meson (Opciones Forzadas)
+    - name: Inyectar parche nativo en Meson (Elimina el Error de Linux)
       run: |
-        # Añadimos -Dplatforms=android para indicarle a Meson que no busque librerias de escritorio Linux
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android -Dgles1=disabled -Dgles2=disabled
+        # Sobreescribimos el script de configuracion para anular las peticiones de Linux X11/Wayland de escritorio
+        cat <<EOF > meson.build
+        project('bcn_layer', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
+        
+        # Enlazamos directamente las carpetas fuente de tu Fork de Pipetto
+        src_files = files(
+          'src/wrapper.cpp',
+          'src/transcoder.cpp'
+        )
+        
+        # Añadimos los argumentos de compilador cruzado para tu chip T618
+        add_project_arguments('-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', language: ['c', 'cpp'])
+        
+        # Compilar unicamente la libreria compartida para Winlator
+        shared_library('vulkan_wrapper',
+          src_files,
+          name_prefix: 'lib',
+          install: true
+        )
+        EOF
+
+    - name: Limpiar y Configurar entorno con Meson
+      run: |
+        # Ejecutamos Meson apuntando a nuestro script limpio sin comandos forzados invalidos
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
         
     - name: Compilar codigo nativo con Ninja
       run: |
@@ -69,7 +92,7 @@ jobs:
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "1.6.5",
+          "version": "1.7.0",
           "author": "Pipetto & Unisoc Mod",
           "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
