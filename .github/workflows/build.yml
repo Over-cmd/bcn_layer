@@ -49,32 +49,10 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Inyectar parche nativo en Meson (Elimina el Error de Linux)
+    - name: Configurar entorno usando el script nativo del proyecto
       run: |
-        # Sobreescribimos el script de configuracion para anular las peticiones de Linux X11/Wayland de escritorio
-        cat <<EOF > meson.build
-        project('bcn_layer', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
-        
-        # Enlazamos directamente las carpetas fuente de tu Fork de Pipetto
-        src_files = files(
-          'src/wrapper.cpp',
-          'src/transcoder.cpp'
-        )
-        
-        # Añadimos los argumentos de compilador cruzado para tu chip T618
-        add_project_arguments('-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', language: ['c', 'cpp'])
-        
-        # Compilar unicamente la libreria compartida para Winlator
-        shared_library('vulkan_wrapper',
-          src_files,
-          name_prefix: 'lib',
-          install: true
-        )
-        EOF
-
-    - name: Limpiar y Configurar entorno con Meson
-      run: |
-        # Ejecutamos Meson apuntando a nuestro script limpio sin comandos forzados invalidos
+        # Usamos el comando nativo "setup" de Meson leyendo el meson.build oficial que ya viene en tu fork
+        # Le indicamos que el tipo de construcción sea estrictamente "release" para exprimir la potencia del T618
         meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
         
     - name: Compilar codigo nativo con Ninja
@@ -85,14 +63,14 @@ jobs:
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar el archivo .so de 64 bits generado por la compilacion limpia
-        cp build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
+        # Buscar el archivo .so en el directorio de salida (por si cambia el nombre de la libreria)
+        find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "1.7.0",
+          "version": "1.8.0",
           "author": "Pipetto & Unisoc Mod",
           "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
