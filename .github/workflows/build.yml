@@ -10,15 +10,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar codigo y todos sus submodulos (Granite Shaders)
+    - name: Descargar codigo de tu repositorio
       uses: actions/checkout@v4
-      with:
-        submodules: 'recursive' # Esta linea es clave para descargar los componentes de Granite
 
     - name: Instalar herramientas esenciales de compilacion
       run: |
         sudo apt-get update
-        sudo apt-get install -y meson ninja-build python3-pip wget zip libvulkan-dev
+        sudo apt-get install -y meson ninja-build python3-pip wget zip
 
     - name: Configurar Android NDK Oficial mediante Action
       uses: android-actions/setup-android@v3
@@ -28,6 +26,11 @@ jobs:
         sdkmanager --install "ndk;26.1.10909125"
         echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
         echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+    - name: Clonar el Repositorio de Drivers Base Completo (Leegao Backend)
+      run: |
+        # Clonamos de forma recursiva el backend compatible con el entorno de Pipetto
+        git clone --recursive https://github.com driver_src
 
     - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
       run: |
@@ -49,29 +52,31 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Configurar e Inicializar Meson de forma limpia
+    - name: Configurar e Inicializar Meson de forma limpia (Forzado Android)
       run: |
-        # Usamos los archivos nativos descargados recursivamente
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release
-
+        cd driver_src
+        # Usamos el script de inicialización nativo del Driver inyectando exclusión de ventanas Linux
+        meson setup build_output --cross-file ../arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android -Dgles1=disabled -Dgles2=disabled
+        
     - name: Compilar codigo nativo con Ninja
       run: |
+        cd driver_src
         ninja -C build_output
 
     - name: Organizar estructura para instalador de Winlator
       run: |
         mkdir -p package/vulkan/lib64
         
-        # Copiar de forma segura cualquier archivo .so resultante de la compilacion
-        find build_output/ -name "*.so" -exec cp {} package/vulkan/lib64/libvulkan_wrapper.so \;
+        # Copiar de forma segura el archivo .so resultante de la compilación limpia
+        cp driver_src/build_output/libvulkan_wrapper.so package/vulkan/lib64/libvulkan_wrapper.so
 
         # Crear el manifiesto meta.json oficial para Winlator
         cat <<EOF > package/meta.json
         {
-          "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "2.1.0",
+          "name": "Pipetto-Leegao T618 Custom Wrapper",
+          "version": "2.2.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Compilacion bcn_layer optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
+          "description": "Wrapper optimizado para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y engaño (Spoof) API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
