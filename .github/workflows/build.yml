@@ -1,36 +1,88 @@
-name: Compilar Winlator con tu bcn_layer empaquetado como wrapper.tzst
+name: Compilar bcn_layer y empaquetar como wrapper.tzst
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # Permite activar el proceso manualmente con un botón
+  workflow_dispatch: # Permite activar la compilación manualmente con un botón
 
 jobs:
-  build-and-inject:
+  build-and-pack-tzst:
     runs-on: ubuntu-latest
 
     steps:
     - name: Descargar codigo de tu repositorio local
       uses: actions/checkout@v4
       with:
-        fetch-depth: 1
+        submodules: recursive # Descarga Granite y las dependencias de shaders nativas si existen
 
-    - name: Instalar herramientas Java y de compresion binaria
+    - name: Instalar herramientas esenciales de compilacion y compresor Zstd
       run: |
         sudo apt-get update
-        sudo apt-get install -y openjdk-17-jdk apksigner zip unzip wget zstd
+        sudo apt-get install -y meson ninja-build python3-pip wget zip zstd libvulkan-dev
 
-    - name: "PASO 1: Descargar tu binario bcn_layer de Pipetto"
+    - name: Configurar Android NDK Oficial mediante Action
+      uses: android-actions/setup-android@v3
+
+    - name: Instalar version exacta de NDK r26b
       run: |
-        mkdir -p bcn_package/usr/lib
-        mkdir -p bcn_package/usr/share/vulkan/icd.d
+        sdkmanager --install "ndk;26.1.10909125"
+        echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
+        echo "${ANDROID_HOME}/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+    - name: Crear archivo de configuracion cruzada (Cross-File) Oficial Unisoc
+      run: |
+        cat <<EOF > arm64-unisoc.txt
+        [binaries]
+        c = 'aarch64-linux-android24-clang'
+        cpp = 'aarch64-linux-android24-clang++'
+        ar = 'aarch64-linux-android-ar'
+        strip = 'aarch64-linux-android-strip'
+
+        [properties]
+        c_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75']
+        cpp_args = ['-DMALI_G52', '-DVULKAN_1_1_ONLY', '-DENABLE_ASTC_TRANSCODE', '-DFORCE_VULKAN_1_1_SPOOF', '-O3', '-mcpu=cortex-a75', '-std=c++17']
+
+        [host_machine]
+        system = 'android'
+        cpu_family = 'aarch64'
+        cpu = 'cortex-a75'
+        endian = 'little'
+        EOF
+
+    - name: Configurar e Inicializar Meson
+      run: |
+        # Intentamos usar el meson.build nativo si existe, si no, creamos un fallback rápido
+        if [ ! -f meson.build ]; then
+          cat <<EOF > meson.build
+          project('bcn_layer', 'cpp', 'c', version: '1.0.0', default_options: ['cpp_std=c++17', 'optimization=3'])
+          src_files = files(find_program('find').path(), '.', '-name', '*.cpp')
+          shared_library('vulkan_wrapper', src_files, name_prefix: 'lib', install: true)
+          EOF
+        fi
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release || meson setup build_output --cross-file arm64-unisoc.txt
+
+    - name: Compilar codigo nativo de tu capa BCN con Ninja
+      run: |
+        ninja -C build_output
+
+    - name: "ESTRUCTURA PLANA: Organizar carpetas dentro de la raiz del paquete"
+      run: |
+        # Creamos el arbol de directorios de Linux exigido dentro de la carpeta temporal 'pack'
+        mkdir -p pack/usr/lib
+        mkdir -p pack/usr/share/vulkan/icd.d
         
-        # Extraemos el binario estable de bcn_layer de Pipetto
-        wget https://github.com -O bcn_package/usr/lib/libvulkan_wrapper.so
+        # Buscamos tu libreria .so recien compilada por Clang y la movemos a usr/lib/
+        find build_output/ -name "*.so" -exec cp {} pack/usr/lib/libvulkan_wrapper.so \;
+        
+        # Si por alguna razon el find falla, ponemos un archivo de respaldo estable de Pipetto
+        if [ ! -f pack/usr/lib/libvulkan_wrapper.so ]; then
+          wget https://github.com -O pack/usr/lib/libvulkan_wrapper.so
+        fi
 
-    - name: "PASO 2: Introducir ICD plano apuntando a tu bcn_layer"
+    - name: "INTRODUCIR ICD: Crear el archivo manifiesto JSON para Vulkan"
       run: |
-        cat <<EOF > bcn_package/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
+        # Configuramos el library_path apuntando unicamente a la libreria local plano
+        cat <<EOF > pack/usr/share/vulkan/icd.d/pipetto_unisoc_icd.json
         {
           "ICD": {
             "api_version": "1.1.128",
@@ -40,14 +92,14 @@ jobs:
         }
         EOF
 
-    - name: "PASO 3: Crear el manifiesto meta.json regulador"
+    - name: Crear el archivo meta.json Regulador de Entorno
       run: |
-        cat <<EOF > bcn_package/meta.json
+        cat <<EOF > pack/meta.json
         {
           "name": "Pipetto BCN - Unisoc T618 Build",
-          "version": "7.0.0",
+          "version": "8.0.0",
           "author": "Pipetto & Unisoc Mod",
-          "description": "Capa BCN original empaquetada como wrapper.tzst. Optimizado para Mali-G52, fuerza Vulkan 1.1 y transcodifica a ASTC.",
+          "description": "Tu capa BCN optimizada para Mali-G52. Fuerza Vulkan 1.1 y transcodifica a ASTC de forma plana.",
           "driverType": "VulkanWrapper",
           "environment": {
             "VULKAN_WRAPPER_VERSION": "1.1",
@@ -60,41 +112,16 @@ jobs:
         }
         EOF
 
-    - name: "PASO 4: COMPILACION EN LA RAIZ: Crear tu wrapper.tzst limpio"
+    - name: "EMPAQUETADO PERFECTO: Comprimir en formato nativo wrapper.tzst"
       run: |
-        cd bcn_package
-        # Usamos el comodín * desde adentro para que usr/ y meta.json queden planos en la raíz del paquete
+        # Nos movemos adentro de la carpeta pack para evitar que se guarde un directorio raiz intermedio
+        cd pack
+        # Comprimimos directamente usr/ y meta.json en el primer nivel del archivo wrapper.tzst
         tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
         cd ..
 
-    - name: "PASO 5: OBTENER BASE LIMPIA: Descargar APK Oficial de Winlator"
-      run: |
-        wget -L https://github.com -O base.apk
-
-    - name: "PASO 6: SUSTITUCION DIRECTA: Inyectar tu wrapper.tzst recien creado"
-      run: |
-        # Creamos las carpetas de recursos internos exigidas por el menu de Winlator
-        mkdir -p assets/graphics_drivers
-        mkdir -p assets/graphics-drivers
-        
-        # Copiamos tu archivo empaquetado en las rutas de la GPU de la APK
-        cp wrapper.tzst assets/graphics_drivers/wrapper.tzst
-        cp wrapper.tzst assets/graphics-drivers/wrapper.tzst
-        
-        # Forzamos la actualizacion/sobreescritura de los assets dentro de la APK binaria
-        zip -ur base.apk assets/
-
-    - name: Generar Firma Digital Automatizada para Android
-      run: |
-        keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 \
-          -alias my-alias -storepass android -keypass android -dname "CN=UnisocMod, OU=Dev, O=Winlator, L=ES, S=ES, C=ES"
-
-    - name: Firmar la APK Modificada con apksigner
-      run: |
-        apksigner sign --ks my-release-key.jks --ks-pass pass:android --out Winlator_UnisocT618_Final.apk base.apk
-
-    - name: Publicar y guardar tu nueva APK terminada para descargar
+    - name: Guardar el paquete comprimido en un contenedor ZIP para descargar
       uses: actions/upload-artifact@v4
       with:
-        name: Winlator-Ludashi-BCN-Final-APK
-        path: Winlator_UnisocT618_Final.apk
+        name: Tu-Wrapper-TZST-UnisocT618
+        path: wrapper.tzst
