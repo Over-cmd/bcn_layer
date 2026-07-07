@@ -49,10 +49,10 @@ jobs:
         endian = 'little'
         EOF
 
-    - name: Limpiar y Configurar entorno con Meson
+    - name: Limpiar y Configurar entorno con Meson (Opciones Forzadas)
       run: |
-        # Configuramos el entorno indicando que descarte interfaces de escritorio Linux que causan fallas
-        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android
+        # Añadimos -Dplatforms=android para indicarle a Meson que no busque librerias de escritorio Linux
+        meson setup build_output --cross-file arm64-unisoc.txt -Dbuildtype=release -Dplatforms=android -Dgles1=disabled -Dgles2=disabled
         
     - name: Compilar codigo nativo con Ninja
       run: |
@@ -69,7 +69,7 @@ jobs:
         cat <<EOF > package/meta.json
         {
           "name": "Pipetto Wrapper - Unisoc T618 Build",
-          "version": "1.6.0",
+          "version": "1.6.5",
           "author": "Pipetto & Unisoc Mod",
           "description": "Compilacion estilo Pipetto-crypto optimizada para Mali-G52 (Cortex-A75). Transcodificacion forzada de BCn a ASTC y API Vulkan 1.1.",
           "driverType": "VulkanWrapper",
