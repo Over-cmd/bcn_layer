@@ -1,5 +1,13 @@
 #include "queue.hpp"
-#include "command_buffer.hpp" // CORRECCIÓN: Expone get_command_buffer y struct command_buffer
+
+// Declaración explícita para resolver el error de tipo incompleto y forward declaration
+struct command_buffer {
+    VkCommandBuffer handle;
+    struct device *device;
+    VkCommandPool pool;
+    struct fence *fence;
+};
+struct command_buffer *get_command_buffer(VkCommandBuffer commandbuffer);
 
 std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
 
@@ -64,5 +72,6 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 }
+
 
 
