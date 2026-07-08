@@ -1,66 +1,114 @@
-#include "queue.hpp"
-#include "command_buffer.hpp" // Asegura la definición de struct command_buffer y get_command_buffer
+#include "fence.hpp"
 
-std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
+std::unordered_map<VkFence, std::shared_ptr<struct fence>> fencesMap;
 
-struct queue *
-get_queue(VkQueue queue) {
-	auto it = queuesMap.find(queue);
-	if (it == queuesMap.end())
+struct fence *
+get_fence(VkFence fence) 
+{
+	auto it = fencesMap.find(fence);
+
+	if (it == fencesMap.end())
 		return nullptr;
 
 	return it->second.get();
 }
 
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_CreateFence(VkDevice device,
+					 const VkFenceCreateInfo *pCreateInfo,
+					 const VkAllocationCallbacks *pAllocator,
+					 VkFence *pFence)
+{
+	VkResult result;
+
+	struct device *dev = get_device(device);
+	if (!dev)
+		return VK_ERROR_INITIALIZATION_FAILED;
+
+	result = dev->table.CreateFence(device, pCreateInfo, pAllocator, pFence);
+	if (result != VK_SUCCESS)
+		return result;
+
+	auto fence = std::make_shared<struct fence>();
+	fence->handle = *pFence;
+	fence->device = dev;
+	dev->alloc = pAllocator;
+
+	{
+		scoped_lock l(global_lock);
+		fencesMap[*pFence] = fence;
+	}
+
+	return VK_SUCCESS;
+}
+
+VK_LAYER_EXPORT VkResult VKAPI_CALL
+BCnLayer_WaitForFences(VkDevice device,
+					   uint32_t fenceCount,
+					   const VkFence *pFences,
+					   VkBool32 waitAll,
+					   uint64_t timeout)
+{
+	VkResult result;
+
+	struct device *dev = get_device(device);
+	if (!dev)
+		return VK_ERROR_INITIALIZATION_FAILED;
+
+	result = dev->table.WaitForFences(device, fenceCount, pFences, waitAll, timeout);
+	if (result != VK_SUCCESS || dev->use_image_view)
+		return result;
+
+	scoped_lock l(global_lock);
+    
+	for (uint32_t i = 0; i < fenceCount; i++) {
+		struct fence *fence = get_fence(pFences[i]);
+		if (!fence)
+			continue;
+
+		if (!waitAll && fenceCount > 1 && dev->table.GetFenceStatus(device, pFences[i]) != VK_SUCCESS)
+			continue;
+
+		for (auto it = fence->staging_buffers.begin(); it != fence->staging_buffers.end();) {
+			if ((*it)->handle != VK_NULL_HANDLE) {
+				dev->table.DestroyBuffer(device, (*it)->handle, (*it)->alloc);
+			}
+			if ((*it)->memory != VK_NULL_HANDLE) {
+				dev->table.FreeMemory(device, (*it)->memory, (*it)->alloc);
+			}
+			it = fence->staging_buffers.erase(it);
+		}
+	}
+    
+	return VK_SUCCESS;
+}
+
 VK_LAYER_EXPORT void VKAPI_CALL
-BCnLayer_GetDeviceQueue(VkDevice device,
-						uint32_t queueFamilyIndex,
-						uint32_t queueIndex,
-						VkQueue *pQueue)
+BCnLayer_DestroyFence(VkDevice device,
+					  VkFence fence,
+					  const VkAllocationCallbacks *pAllocator)
 {
 	scoped_lock l(global_lock);
-	
+
 	struct device *dev = get_device(device);
 	if (!dev)
 		return;
 
-	dev->table.GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
-
-	auto queue = std::make_shared<struct queue>();
-	queue->handle = *pQueue;
-	queue->device = dev;
-
-	queuesMap[*pQueue] = queue;
+	if (fence != VK_NULL_HANDLE) {
+		struct fence *f = get_fence(fence);
+		if (f && !dev->use_image_view) {
+			for (auto& buf : f->staging_buffers) {
+				if (buf->handle != VK_NULL_HANDLE) dev->table.DestroyBuffer(device, buf->handle, buf->alloc);
+				if (buf->memory != VK_NULL_HANDLE) dev->table.FreeMemory(device, buf->memory, buf->alloc);
+			}
+			f->staging_buffers.clear();
+		}
+		dev->table.DestroyFence(device, fence, pAllocator);
+	}
+		
+	fencesMap.erase(fence);
 }
 
-VK_LAYER_EXPORT VkResult VKAPI_CALL
-BCnLayer_QueueSubmit(VkQueue queue,
-					 uint32_t submitInfoCount,
-					 const VkSubmitInfo *pSubmitInfos,
-					 VkFence fence)
-{
-	scoped_lock l(global_lock);
-
-	struct queue *q = get_queue(queue);
-	if (!q) {
-		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(queue));
-		if (fallback_dev) {
-			return fallback_dev->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
-		}
-		return VK_ERROR_INITIALIZATION_FAILED;
-	}
-
-	struct fence *f = get_fence(fence);
-
-	for (uint32_t i = 0; i < submitInfoCount; i++) {
-		VkSubmitInfo submit_info = pSubmitInfos[i];
-		for (uint32_t j = 0; j < submit_info.commandBufferCount; j++) {
-			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBuffers[j]);
-			if (cb) {
-				cb->fence = f;
-			}
-		}
-	}
 
 	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 }
