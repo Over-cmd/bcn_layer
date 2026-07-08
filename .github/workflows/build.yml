@@ -16,14 +16,25 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar el Android NDK de forma oficial en las variables del sistema
-    # Esto instala y registra 'make', 'clang' y 'clang++' para arm64 de forma automática
-    - name: Configurar Android NDK
-      uses: nndessigt/setup-android-ndk@v1
+    # 2. Configurar Java (Mandatorio para las herramientas de Android SDK)
+    - name: Configurar Java
+      uses: actions/setup-java@v4
       with:
-        ndk-version: r25c
+        distribution: 'temurin'
+        java-version: '17'
 
-    # 3. CREACIÓN DINÁMICA DEL CMAKE: Generamos las reglas de construcción sobre la marcha
+    # 3. Configurar Android SDK y NDK usando la acción oficial estable
+    - name: Configurar Android SDK y NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: '25.2.9519653' # Versión LTS r25c oficial y estable
+
+    # 4. Aceptar las licencias de Android de forma automática para evitar bloqueos
+    - name: Aceptar Licencias de Android
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+    # 5. CREACIÓN DINÁMICA DEL CMAKE: Generamos las reglas de construcción sobre la marcha
     - name: Generar CMakeLists.txt automáticamente
       run: |
         cat << 'EOF' > CMakeLists.txt
@@ -48,25 +59,28 @@ jobs:
         # Enlazar con las librerías nativas de Android y Vulkan
         target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
         
-        # Forzar ocultamiento de símbolos innecesarios y optimización agresiva para Mali-G52
+        # Ocultamiento de símbolos innecesarios y optimización agresiva para Mali-G52
         target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3)
         EOF
         echo "¡Archivo CMakeLists.txt generado con éxito en la raíz!"
 
-    # 4. CONFIGURAR Y COMPILAR CON CMAKE UTILIZANDO EL ENTORNO DE CORRECCIÓN
-    - name: Configurar y Compilar con CMake
+    # 6. CONFIGURAR Y COMPILAR CON CMAKE USANDO NINJA
+    # Ninja elimina el error de CMAKE_MAKE_PROGRAM porque está integrado nativamente en el NDK
+    - name: Configurar y Compilar con CMake y Ninja
       run: |
         mkdir -p build && cd build
         cmake .. \
+          -G "Ninja" \
+          -DCMAKE_MAKE_PROGRAM=$ANDROID_HOME/cmake/*/bin/ninja \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_PLATFORM=android-29 \
           -DCMAKE_BUILD_TYPE=Release
         
-        # Compilar usando toda la potencia de hilos del servidor de GitHub
-        make -j$(nproc)
+        # Invocar la compilación nativa a través de CMake (válido para cualquier generador)
+        cmake --build . --parallel $(nproc)
 
-    # 5. Organizar y verificar que la biblioteca dinámica se generara correctamente
+    # 7. Organizar y verificar que la biblioteca dinámica se generara correctamente
     - name: Organizar y Verificar Binario .so
       run: |
         mkdir -p release_so
@@ -83,7 +97,7 @@ jobs:
           exit 1
         fi
 
-    # 6. Estructurar la distribución y empaquetar en layer.tzst (Tar + Zstandard)
+    # 8. Estructurar la distribución y empaquetar en layer.tzst (Tar + Zstandard)
     - name: Empaquetar en layer.tzst
       run: |
         mkdir -p release_package
@@ -112,7 +126,7 @@ jobs:
         # Crear el archivo comprimido final solicitado por tu pipeline
         tar -I zstd -cf layer.tzst -C release_package .
 
-    # 7. Guardar el archivo layer.tzst como un artefacto descargable en tus Actions de GitHub
+    # 9. Guardar el archivo layer.tzst como un artefacto descargable en tus Actions de GitHub
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
