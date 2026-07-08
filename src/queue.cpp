@@ -21,6 +21,9 @@ BCnLayer_GetDeviceQueue(VkDevice device,
 	scoped_lock l(global_lock);
 	
 	struct device *dev = get_device(device);
+	if (!dev)
+		return;
+
 	dev->table.GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
 
 	auto queue = std::make_shared<struct queue>();
@@ -39,13 +42,25 @@ BCnLayer_QueueSubmit(VkQueue queue,
 	scoped_lock l(global_lock);
 
 	struct queue *q = get_queue(queue);
+	if (!q) {
+		// Fallback de emergencia si el puntero de la cola no está registrado
+		struct device *fallback_dev = get_device(GetKey(queue));
+		if (fallback_dev) {
+			return fallback_dev->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
+		}
+		return VK_ERROR_INITIALIZATION_FAILED;
+	}
+
 	struct fence *f = get_fence(fence);
 
 	for (uint32_t i = 0; i < submitInfoCount; i++) {
 		VkSubmitInfo submit_info = pSubmitInfos[i];
 		for (uint32_t j = 0; j < submit_info.commandBufferCount; j++) {
 			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBuffers[j]);
-			cb->fence = f;
+			// PARCHE MALI-G52: Validamos que el command buffer esté registrado para evitar un Crash por puntero nulo
+			if (cb) {
+				cb->fence = f;
+			}
 		}
 	}
 
