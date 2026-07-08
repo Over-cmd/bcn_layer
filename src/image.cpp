@@ -30,7 +30,8 @@ BCnLayer_CreateImage(VkDevice device,
 
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
 	    create_info.format = get_format_for_bcn(pCreateInfo->format);
-	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+	    // PARCHE MALI-G52: Aseguramos los bits de transferencia para evitar fallos de lectura/escritura en Vulkan 1.1
+	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	}
 
@@ -42,7 +43,7 @@ BCnLayer_CreateImage(VkDevice device,
 	}
 
     auto image = std::make_unique<struct image>();
-    image->handle = *pImage,
+    image->handle = *pImage;
     image->format = pCreateInfo->format;
     image->device = dev;
     image->alloc = pAllocator;
