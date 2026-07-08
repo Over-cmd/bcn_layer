@@ -13,6 +13,8 @@
 #include <memory>
 #include <cstring>
 
+extern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
+
 #undef VK_LAYER_EXPORT
 #if defined(WIN32)
 #define VK_LAYER_EXPORT extern "C" __declspec(dllexport)
