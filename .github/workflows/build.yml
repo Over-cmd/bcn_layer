@@ -12,73 +12,75 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clonar el código fuente de tu bifurcación de forma limpia
+    # 1. Clonar de forma limpia el código de tu bifurcación Over-cmd/bcn_layer
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (requerido por el entorno base de herramientas de Android)
+    # 2. Configurar Java (necesario para el entorno de herramientas de Android)
     - name: Configurar Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 3. Instalar el NDK oficial de Android (versión estable compatible con arm64)
+    # 3. Instalar el NDK oficial de Android en la máquina virtual de GitHub
     - name: Instalar Android NDK
       uses: android-actions/setup-android@v3
       with:
         ndk-version: '25.2.9519653'
 
-    # 4. Compilar usando ndk-build para procesar el archivo Android.mk nativo de tu fork
+    # 4. Comando exacto para compilar leyendo las reglas dentro de jni/
     - name: Compilar con Android NDK-Build
       run: |
         $ANDROID_NDK_HOME/ndk-build \
           NDK_PROJECT_PATH=$GITHUB_WORKSPACE \
-          APP_BUILD_SCRIPT=$GITHUB_WORKSPACE/Android.mk \
+          APP_BUILD_SCRIPT=$GITHUB_WORKSPACE/jni/Android.mk \
           APP_ABI=arm64-v8a \
           APP_PLATFORM=android-29 \
           NDK_DEBUG=0 \
           -j$(nproc)
 
-    # 5. Crear la carpeta build y mover el binario generado de forma inteligente
+    # 5. Organizar el binario .so final de 64 bits para el Unisoc T618
     - name: Organizar y Verificar Binario .so
       run: |
         mkdir -p build
         
-        # Buscar el archivo .so generado en los directorios estándares de salida de ndk-build
-        if [ -f "libs/arm64-v8a/libVkLayer_bcn.so" ]; then
-          cp libs/arm64-v8a/libVkLayer_bcn.so build/
-        elif [ -f "obj/local/arm64-v8a/libVkLayer_bcn.so" ]; then
-          cp obj/local/arm64-v8a/libVkLayer_bcn.so build/
+        # Buscar el archivo .so generado en las carpetas de salida de ndk-build
+        if [ -d "libs/arm64-v8a" ] && [ "$(ls -A libs/arm64-v8a/*.so 2>/dev/null)" ]; then
+          cp libs/arm64-v8a/*.so build/
+        elif [ -d "obj/local/arm64-v8a" ] && [ "$(ls -A obj/local/arm64-v8a/*.so 2>/dev/null)" ]; then
+          cp obj/local/arm64-v8a/*.so build/
         else
-          # Si ndk-build le asignó otro nombre al archivo .so, lo busca y lo extrae
+          # Búsqueda de emergencia si el compilador usó rutas dinámicas customizadas
           find . -name "*.so" -exec cp {} build/ \;
         fi
         
-        # Validación física del binario para comprobar arquitectura ARM de 64 bits
-        if [ -f "build/libVkLayer_bcn.so" ] || [ "$(ls -A build)" ]; then
-          echo "¡Éxito! El binario de la capa Vulkan se ha generado correctamente."
+        # Validación física del binario para la GPU Mali-G52
+        if [ "$(ls -A build)" ]; then
+          echo "¡Éxito! Binario localizado de forma correcta en el árbol."
           file build/*.so
         else
-          echo "Error: No se pudo localizar el archivo .so compilado."
+          echo "Error: El proceso de compilación no generó ningún archivo de biblioteca .so."
           exit 1
         fi
 
-    # 6. Estructurar el directorio de distribución y comprimir en layer.tzst (Tar + Zstandard)
+    # 6. Estructurar la carpeta de distribución y generar el archivo layer.tzst comprimido
     - name: Empaquetar en layer.tzst
       run: |
         mkdir -p release
         cp build/*.so release/
         
-        # Incluir el manifiesto de la capa Vulkan si existe en la raíz de tu fork
+        # Copiar el manifiesto JSON de la capa de Vulkan si existe en la raíz o en jni
         if [ -f "VkLayer_bcn.json" ]; then 
           cp VkLayer_bcn.json release/
+        elif [ -f "jni/VkLayer_bcn.json" ]; then
+          cp jni/VkLayer_bcn.json release/
         fi
         
-        # Crear el archivo comprimido final solicitado por tu pipeline
+        # Crear la compresión nativa Tar + Zstandard solicitada por tu pipeline
         tar -I zstd -cf layer.tzst -C release .
 
-    # 7. Cargar el archivo comprimido final como un artefacto descargable en el panel de GitHub
+    # 7. Subir el archivo empaquetado final a la interfaz de tus GitHub Actions
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
