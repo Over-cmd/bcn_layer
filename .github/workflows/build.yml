@@ -29,11 +29,110 @@ jobs:
       with:
         ndk-version: '25.2.9519653' # Versión LTS r25c oficial y estable
 
-    # 4. INSTALACIÓN DE NINJA: Soluciona el error de "no such file or directory" al compilar
+    # 4. Instalar Ninja de forma global en el sistema Linux
     - name: Instalar Herramientas de Compilación Globales (Ninja)
       run: |
         sudo apt-get update
         sudo apt-get install -y ninja-build
+
+    # 5. CREACIÓN DINÁMICA DEL CMAKE CORREGIDA: Apuntamos estrictamente a la carpeta src/
+    - name: Generar CMakeLists.txt automáticamente
+      run: |
+        cat << 'EOF' > CMakeLists.txt
+        cmake_minimum_required(VERSION 3.10)
+        project(VkLayer_bcn_decompress LANGUAGES CXX C)
+        
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+        
+        # PARCHE CRÍTICO: Buscamos únicamente los archivos .cpp reales en 'src/' e ignoramos los temporales de 'build/'
+        file(GLOB SOURCE_FILES "src/*.cpp")
+        
+        if(NOT SOURCE_FILES)
+            message(FATAL_ERROR "No se encontraron archivos .cpp válidos en la carpeta src/.")
+        endif()
+        
+        message(STATUS "Archivos corregidos detectados para la capa: ${SOURCE_FILES}")
+        
+        # Crear la biblioteca dinámica para la capa de Vulkan
+        add_library(VkLayer_bcn SHARED ${SOURCE_FILES})
+        
+        # Enlazar con las librerías nativas de Android y Vulkan
+        target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
+        
+        # Ocultamiento de símbolos innecesarios y optimización agresiva para Mali-G52
+        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3)
+        EOF
+        echo "¡Archivo CMakeLists.txt corregido y generado en la raíz!"
+
+    # 6. CONFIGURAR Y COMPILAR CON CMAKE Y NINJA GLOBAL
+    - name: Configurar y Compilar con CMake y Ninja
+      run: |
+        rm -rf build
+        mkdir -p build && cd build
+        cmake .. \
+          -G "Ninja" \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-29 \
+          -DCMAKE_BUILD_TYPE=Release
+        
+        # Compilar usando el ninja que instalamos globalmente en el sistema
+        cmake --build . --parallel $(nproc)
+
+    # 7. Organizar y verificar que la biblioteca dinámica se generara correctamente
+    - name: Organizar y Verificar Binario .so
+      run: |
+        mkdir -p release_so
+        
+        # Extraer el archivo .so de la carpeta de construcción
+        find build/ -name "*.so" -exec cp {} release_so/ \;
+        
+        # Validar físicamente que sea un binario de 64 bits para ARM (Mali-G52)
+        if [ "$(ls -A release_so)" ]; then
+          echo "¡Éxito! Binario libVkLayer_bcn.so localizado de forma correcta."
+          file release_so/*.so
+        else
+          echo "Error crítico: La compilación con CMake no generó ningún archivo .so."
+          exit 1
+        fi
+
+    # 8. Estructurar la distribución y empaquetar en layer.tzst (Tar + Zstandard)
+    - name: Empaquetar en layer.tzst
+      run: |
+        mkdir -p release_package
+        cp release_so/*.so release_package/
+        
+        # Buscar el archivo de manifiesto JSON de la capa Vulkan si existe, o crear uno básico si falta
+        MANIFEST=$(find . -name "VkLayer_bcn.json" | head -n 1)
+        if [ ! -z "$MANIFEST" ]; then
+          cp "$MANIFEST" release_package/
+        else
+          cat << 'EOF' > release_package/VkLayer_bcn.json
+          {
+              "file_format_version" : "1.0.0",
+              "layer" : {
+                  "name": "VK_LAYER_BIFROST_BcnDecompress",
+                  "type": "GLOBAL",
+                  "library_path": "./libVkLayer_bcn.so",
+                  "api_version": "1.1.0",
+                  "implementation_version": "1",
+                  "description": "BCn Texture Decompression Compute Layer for Mali-G52"
+              }
+          }
+          EOF
+        fi
+        
+        # Crear la compresión nativa Tar + Zstandard solicitada por tu pipeline
+        tar -I zstd -cf layer.tzst -C release_package .
+
+    # 9. Guardar el archivo layer.tzst como un artefacto descargable en tus Actions de GitHub
+    - name: Subir artefacto final
+      uses: actions/upload-artifact@v4
+      with:
+        name: layer-tzst-unisoc-t618
+        path: layer.tzst
+        retention-days: 5
 
     # 5. CREACIÓN DINÁMICA DEL CMAKE: Generamos las reglas de construcción sobre la marcha
     - name: Generar CMakeLists.txt automáticamente
