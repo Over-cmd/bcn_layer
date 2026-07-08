@@ -89,6 +89,4 @@ BCnLayer_DestroyFence(VkDevice device,
                       const VkAllocationCallbacks *pAllocator);              
 }
 
-
-
 #endif
