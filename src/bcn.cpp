@@ -165,17 +165,16 @@ create_bcn_compute_pipelines(struct device *dev)
 		.pNext = nullptr,
 		.flags = 0,
 		.codeSize = (dev->use_image_view) ? s3tc_iv_spv_len : s3tc_spv_len,
-		.pCode = (dev->use_image_view) ? (const uint32_t *)s3tc_iv_spv : (const uint32_t *)s3tc_spv
+		.pCode = (dev->use_image_view) ? reinterpret_cast<const uint32_t *>(s3tc_iv_spv) : reinterpret_cast<const uint32_t *>(s3tc_spv)
 	};
 
-
-		VkShaderModule rgtcShaderModule;
+	VkShaderModule rgtcShaderModule;
 	VkShaderModuleCreateInfo rgtc_shader_info = {
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
 		.codeSize = (dev->use_image_view) ? rgtc_iv_spv_len : rgtc_spv_len,
-		.pCode = (dev->use_image_view) ? (const uint32_t *)rgtc_iv_spv : (const uint32_t *)rgtc_spv
+		.pCode = (dev->use_image_view) ? reinterpret_cast<const uint32_t *>(rgtc_iv_spv) : reinterpret_cast<const uint32_t *>(rgtc_spv)
 	};
 
 	VkShaderModule bc6ShaderModule;
@@ -184,7 +183,7 @@ create_bcn_compute_pipelines(struct device *dev)
 	    .pNext = nullptr,
 	    .flags = 0,
 	    .codeSize = (dev->use_image_view) ? bc6_iv_spv_len : bc6_spv_len,
-	    .pCode = (dev->use_image_view) ? (const uint32_t *)bc6_iv_spv : (const uint32_t *)bc6_spv
+	    .pCode = (dev->use_image_view) ? reinterpret_cast<const uint32_t *>(bc6_iv_spv) : reinterpret_cast<const uint32_t *>(bc6_spv)
 	};
 
 	VkShaderModule bc7ShaderModule;
@@ -193,8 +192,9 @@ create_bcn_compute_pipelines(struct device *dev)
 	    .pNext = nullptr,
 	    .flags = 0,
 	    .codeSize = (dev->use_image_view) ? bc7_iv_spv_len : bc7_spv_len,
-	    .pCode = (dev->use_image_view) ? (const uint32_t *)bc7_iv_spv : (const uint32_t *)bc7_spv
+	    .pCode = (dev->use_image_view) ? reinterpret_cast<const uint32_t *>(bc7_iv_spv) : reinterpret_cast<const uint32_t *>(bc7_spv)
 	};
+
 
 	table.CreateShaderModule(device, &s3tc_shader_info, nullptr, &s3tcShaderModule);
 	table.CreateShaderModule(device, &bc6_shader_info, nullptr, &bc6ShaderModule);
