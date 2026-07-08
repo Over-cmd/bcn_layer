@@ -184,10 +184,14 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   		    if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   		                             driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   		    // PARCHE MALI-G52: Saltamos la restricción de descarte de drivers para forzar el uso de nuestros Shaders optimizados
+   		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
    		    {
-   		    	break;
+   		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
+   		                                 driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   		        {
+   		        	break;
+   		        }
    		    }
    		      
    			if (type & VK_IMAGE_TYPE_1D) {
@@ -235,6 +239,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
       format, type, tiling, usage, flags, pImageFormatProperties);
 }
 
+
 VKAPI_ATTR VkResult VKAPI_CALL
 BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
                                                  const VkPhysicalDeviceImageFormatInfo2* pImageFormatInfo,
@@ -245,7 +250,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
 	
-    switch(pImageFormatInfo->format) {
+	switch(pImageFormatInfo->format) {
 		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
    		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
    		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
@@ -264,11 +269,15 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
-   			{
-   				break;
-   			}
+   		    // PARCHE MALI-G52: Evitamos que el driver de ARM aborte la exposición del formato virtualizado
+   		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
+   		    {
+   		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
+   		                                 driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   		        {
+   		        	break;
+   		        }
+   		    }
    				
    			if (pImageFormatInfo->type & VK_IMAGE_TYPE_1D) {
    				pImageFormatProperties->imageFormatProperties.maxExtent.width = props2.properties.limits.maxImageDimension1D;
@@ -315,6 +324,7 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
       pImageFormatInfo, pImageFormatProperties);
 }
 
+
 VKAPI_ATTR void VKAPI_CALL
 BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
                                           VkFormat format,
@@ -347,11 +357,15 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   			if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
-   			                         driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
-   			{
-   				break;
-   			}
+   		    // PARCHE MALI-G52: Saltamos la restricción de descarte de drivers para forzar la exposición de características óptimas
+   		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
+   		    {
+   		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
+   		                                 driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+   		        {
+   		        	break;
+   		        }
+   		    }
    			                                        
    			pFormatProperties->optimalTilingFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
    			return;
@@ -359,6 +373,7 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    			break;
    }
 }
+
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
