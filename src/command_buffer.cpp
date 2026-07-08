@@ -83,15 +83,26 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 	VkResult result;
 
 	struct command_buffer *cb = get_command_buffer(commandBuffer);
+	if (!cb)
+		return;
+
 	struct device *dev = cb->device;
 	struct image *img = find_image(dstImage);
 	struct buffer *buf = find_buffer(srcBuffer);
+	
+	if (!img || !buf) {
+		struct device *fallback_dev = get_device(GetKey(commandBuffer));
+		if (fallback_dev) {
+			fallback_dev->table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+		}
+		return;
+	}
+
 	VkFormat format = img->format;
 	int texel_size = is_bc6(format) ? 8 : 4;
-
 	table = dev->table;
 	
-	if (!img || !buf || !is_supported_bcn_format(dev, format)) {
+	if (!is_supported_bcn_format(dev, format)) {
 		table.CmdCopyBufferToImage(commandBuffer,
 			srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 		return;
@@ -106,8 +117,13 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
         else {
         	int w = copy_region.imageExtent.width;                                                         
         	int h = copy_region.imageExtent.height;
-        	int size = w * h *texel_size;
+        	int size = w * h * texel_size;
         	auto staging_buf = create_staging_buffer(dev, size);
+
+        	if (!staging_buf) {
+        		table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, 1, &pRegions[i]);
+        		continue;
+        	}
 
         	decompress_bcn_compute(dev, commandBuffer, format, &copy_region, buf, staging_buf.get(), img, dstImageLayout);
         	
@@ -134,7 +150,13 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 			table.CmdCopyBufferToImage(commandBuffer,
 				staging_buf->handle, dstImage, dstImageLayout, 1, &copy_region);
 
-			cb->fence->staging_buffers.push_back(std::move(staging_buf));
+			// PARCHE MALI-G52: Evitamos caída de puntero nulo si el fence aún no ha sido asignado al búfer de comandos
+			if (cb->fence) {
+				cb->fence->staging_buffers.push_back(std::move(staging_buf));
+			} else {
+				// Resguardo de seguridad: Esperamos a que la GPU termine de procesar el comando inmediatamente si no hay fence
+				dev->table.DeviceWaitIdle(dev->handle);
+			}
 		}
 	}
 }
