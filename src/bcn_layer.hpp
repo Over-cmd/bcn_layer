@@ -54,6 +54,7 @@ struct device {
 	const VkAllocationCallbacks *alloc;
 };
 
-struct device *get_device(VkDevice);
+struct device *get_device(VkDevice device);
 
 #endif
+
