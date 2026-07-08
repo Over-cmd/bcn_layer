@@ -54,7 +54,7 @@ jobs:
           local var_name=$2
           local output_h=$3
           
-          # PARCHE CRÍTICO MALI-G52: Inyectar la extensión requerida para activar los #include en glslangValidator
+          # PARCHE MALI-G52: Inyectar la extensión requerida para activar los #include en glslangValidator
           sed -i '/#version/a \#extension GL_GOOGLE_include_directive : require' "$file"
           
           # Compilar el código GLSL a binario SPIR-V plano
@@ -71,7 +71,7 @@ jobs:
           rm -f temp.spv
         }
 
-        # Ejecutar el compilador inyectando dinámicamente la extensión en cada shader mapeado
+        # Ejecutar el compilador para cada sombreador de cómputo mapeado en bcn.cpp
         compile_shader s3tc.comp s3tc_spv s3tc_spv.h
         compile_shader s3tc_iv.comp s3tc_iv_spv s3tc_iv_spv.h
         compile_shader bc6.comp bc6_spv bc6_spv.h
@@ -149,19 +149,8 @@ jobs:
         if [ ! -z "$MANIFEST" ]; then
           cp "$MANIFEST" release_package/
         else
-          cat << 'EOF' > release_package/VkLayer_bcn.json
-          {
-              "file_format_version" : "1.0.0",
-              "layer" : {
-                  "name": "VK_LAYER_BIFROST_BcnDecompress",
-                  "type": "GLOBAL",
-                  "library_path": "./libVkLayer_bcn.so",
-                  "api_version": "1.1.0",
-                  "implementation_version": "1",
-                  "description": "BCn Texture Decompression Compute Layer for Mali-G52"
-              }
-          }
-          EOF
+          # Corrección: Se utiliza echo lineal para evitar fallos de delimitador EOF en bash de GitHub
+          echo '{"file_format_version":"1.0.0","layer":{"name":"VK_LAYER_BIFROST_BcnDecompress","type":"GLOBAL","library_path":"./libVkLayer_bcn.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer for Mali-G52"}}' > release_package/VkLayer_bcn.json
         fi
         
         tar -I zstd -cf layer.tzst -C release_package .
