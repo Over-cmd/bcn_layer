@@ -16,24 +16,160 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (Requerido para el entorno base de Android)
+    # 2. Configurar Java (Requerido para las herramientas del SDK)
     - name: Configurar Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 3. Configurar Android SDK y NDK usando la acción oficial estable
+    # 3. Configurar Android SDK y NDK oficiales estables
     - name: Configurar Android SDK y NDK
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: '25.2.9519653' # Versión LTS r25c oficial y estable
+        ndk-version: '25.2.9519653'
 
     # 4. Instalar Ninja de forma global en el sistema Linux
     - name: Instalar Herramientas de Compilación Globales (Ninja)
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build
+        sudo apt-get install -y ninja-build xxd
+
+    # 5. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp
+    - name: Aplicar Parche de Enlace Externo a bcn_layer.hpp
+      run: |
+        if ! grep -q "extern std::unordered_map.*instanceDispatch" src/bcn_layer.hpp; then
+          # Insertar la declaración externa debajo de los includes principales
+          sed -i '/#include <cstring>/a \\nextern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;' src/bcn_layer.hpp
+          echo "¡Parche aplicado con éxito en bcn_layer.hpp!"
+        fi
+
+    # 6. COMPILACIÓN REAL DE SHADERS (SPIR-V) USANDO XXD EN MODO PALABRAS DE 4 BYTES
+    - name: Precompilar Shaders GLSL a Cabeceras C++ (*_spv.h)
+      run: |
+        cd src/
+        
+        compile_shader() {
+          local file=$1
+          local var_name=$2
+          local output_h=$3
+          
+          # Compilar el código GLSL a binario SPIR-V plano
+          glslangValidator -V "$file" -o temp.spv
+          
+          # Convertir el archivo temporal en un array C usando xxd
+          xxd -i temp.spv > "$output_h"
+          
+          # Parchear el archivo generado para que use tipos estrictos uint32_t y nombres correctos
+          sed -i "s/unsigned char temp_spv/const unsigned int ${var_name}/g" "$output_h"
+          sed -i "s/unsigned int temp_spv_len/const unsigned int ${var_name}_len/g" "$output_h"
+          sed -i "s/unsigned char/const uint32_t/g" "$output_h"
+          
+          rm -f temp.spv
+        }
+
+        # Ejecutar el compilador para cada sombreador de cómputo mapeado en bcn.cpp
+        compile_shader s3tc.comp s3tc_spv s3tc_spv.h
+        compile_shader s3tc_iv.comp s3tc_iv_spv s3tc_iv_spv.h
+        compile_shader bc6.comp bc6_spv bc6_spv.h
+        compile_shader bc6_iv.comp bc6_iv_spv bc6_iv_spv.h
+        compile_shader bc7.comp bc7_spv bc7_spv.h
+        compile_shader bc7_iv.comp bc7_iv_spv bc7_iv_spv.h
+        compile_shader rgtc.comp rgtc_spv rgtc_spv.h
+        compile_shader rgtc_iv.comp rgtc_iv_spv rgtc_iv_spv.h
+        
+        cd ..
+
+    # 7. GENERACIÓN AUTOMÁTICA DEL ARCHIVO CMAKE EN LA RAÍZ
+    - name: Generar CMakeLists.txt automáticamente
+      run: |
+        cat << 'EOF' > CMakeLists.txt
+        cmake_minimum_required(VERSION 3.10)
+        project(VkLayer_bcn_decompress LANGUAGES CXX C)
+        
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+        
+        # Escanear archivos fuentes .cpp estrictamente dentro de la carpeta src/
+        file(GLOB SOURCE_FILES "src/*.cpp")
+        
+        if(NOT SOURCE_FILES)
+            message(FATAL_ERROR "No se encontraron archivos .cpp válidos en la carpeta src/.")
+        endif()
+        
+        add_library(VkLayer_bcn SHARED ${SOURCE_FILES})
+        
+        # Incluir el directorio src para que bcn.cpp lea las cabeceras precompiladas locales
+        target_include_directories(VkLayer_bcn PRIVATE src/)
+        
+        target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
+        
+        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3)
+        EOF
+        echo "¡Archivo CMakeLists.txt generado con éxito!"
+
+    # 8. CONFIGURAR Y COMPILAR EL PROYECTO CON CMAKE Y NINJA
+    - name: Configurar y Compilar con CMake y Ninja
+      run: |
+        rm -rf build
+        mkdir -p build && cd build
+        cmake .. \
+          -G "Ninja" \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-29 \
+          -DCMAKE_BUILD_TYPE=Release
+        
+        cmake --build . --parallel $(nproc)
+
+    # 9. Organizar y verificar que la biblioteca dinámica se generara correctamente
+    - name: Organizar y Verificar Binario .so
+      run: |
+        mkdir -p release_so
+        find build/ -name "*.so" -exec cp {} release_so/ \;
+        
+        if [ "$(ls -A release_so)" ]; then
+          echo "¡Éxito! Binario libVkLayer_bcn.so localizado de forma correcta."
+          file release_so/*.so
+        else
+          echo "Error crítico: La compilación con CMake no generó ningún archivo .so."
+          exit 1
+        fi
+
+    # 10. Estructurar la distribución y empaquetar en layer.tzst (Tar + Zstandard)
+    - name: Empaquetar en layer.tzst
+      run: |
+        mkdir -p release_package
+        cp release_so/*.so release_package/
+        
+        MANIFEST=$(find . -name "VkLayer_bcn.json" | head -n 1)
+        if [ ! -z "$MANIFEST" ]; then
+          cp "$MANIFEST" release_package/
+        else
+          cat << 'EOF' > release_package/VkLayer_bcn.json
+          {
+              "file_format_version" : "1.0.0",
+              "layer" : {
+                  "name": "VK_LAYER_BIFROST_BcnDecompress",
+                  "type": "GLOBAL",
+                  "library_path": "./libVkLayer_bcn.so",
+                  "api_version": "1.1.0",
+                  "implementation_version": "1",
+                  "description": "BCn Texture Decompression Compute Layer for Mali-G52"
+              }
+          }
+          EOF
+        fi
+        
+        tar -I zstd -cf layer.tzst -C release_package .
+
+    # 11. Guardar el archivo layer.tzst final como un artefacto descargable
+    - name: Subir artefacto final
+      uses: actions/upload-artifact@v4
+      with:
+        name: layer-tzst-unisoc-t618
+        path: layer.tzst
+        retention-days: 5
 
     # 5. COMPILACIÓN DINÁMICA DE SHADERS (SPIR-V): Genera los archivos .h requeridos por bcn.cpp
     - name: Precompilar Shaders GLSL a Cabeceras C++ (*_spv.h)
