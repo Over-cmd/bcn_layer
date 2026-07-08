@@ -12,38 +12,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clonar de forma limpia tu código fuente de Over-cmd/bcn_layer
+    # 1. Clonar el código fuente de tu repositorio Over-cmd/bcn_layer
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar el compilador cruzado usando el NDK oficial integrado en GitHub
-    - name: Configurar Entorno de Compilación
+    # 2. CREACIÓN DINÁMICA DEL CMAKE: Generamos las reglas de construcción sobre la marcha
+    - name: Generar CMakeLists.txt automáticamente
       run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/default" >> $GITHUB_ENV
+        cat << 'EOF' > CMakeLists.txt
+        cmake_minimum_required(VERSION 3.10)
+        project(VkLayer_bcn_decompress LANGUAGES CXX C)
+        
+        set(CMAKE_CXX_STANDARD 17)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+        
+        # Intentar localizar cabeceras de Vulkan del sistema o usar las de Android
+        include_directories(${ANDROID_NDK}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include)
+        
+        # Buscar de forma automática todos los archivos .cpp en el repositorio
+        file(GLOB_RECURSE SOURCE_FILES "*.cpp")
+        
+        if(NOT SOURCE_FILES)
+            message(FATAL_ERROR "No se encontraron archivos .cpp para compilar.")
+        endif()
+        
+        message(STATUS "Archivos detectados para compilación: ${SOURCE_FILES}")
+        
+        # Crear la biblioteca dinámica para la capa de Vulkan
+        add_library(VkLayer_bcn SHARED ${SOURCE_FILES})
+        
+        # Enlazar con las librerías nativas de Android y Vulkan
+        target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
+        
+        # Forzar ocultamiento de símbolos innecesarios para optimizar el tamaño en bytes
+        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3)
+        EOF
+        echo "¡Archivo CMakeLists.txt generado con éxito en la raíz!"
 
-    # 3. BÚSQUEDA INTELIGENTE Y COMPILACIÓN CON CMAKE
-    # Este paso encuentra el CMakeLists.txt sin importar la carpeta en la que esté guardado
-    - name: Configurar y Compilar con CMake (Búsqueda Automática)
+    # 3. CONFIGURAR Y COMPILAR CON EL NDK DE ANDROID PREINSTALADO
+    - name: Configurar y Compilar con CMake
       run: |
-        # Localizar en qué subcarpeta del repositorio está el archivo de configuración real
-        CMAKE_DIR=$(find . -name "CMakeLists.txt" -exec dirname {} \; | head -n 1)
-        
-        if [ -z "$CMAKE_DIR" ]; then
-          echo "Error crítico: No se encontró ningún archivo CMakeLists.txt en todo el repositorio."
-          exit 1
-        fi
-        
-        echo "¡Archivo encontrado en la ruta!: $CMAKE_DIR"
-        
-        # Crear la carpeta de construcción e invocar el compilador cruzado de Android
         mkdir -p build && cd build
-        cmake "$GITHUB_WORKSPACE/$CMAKE_DIR" \
+        cmake .. \
           -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/default/build/cmake/android.toolchain.cmake \
           -DANDROID_ABI=arm64-v8a \
           -DANDROID_PLATFORM=android-29 \
           -DCMAKE_BUILD_TYPE=Release
         
-        # Compilar usando la máxima potencia del servidor
+        # Compilar usando toda la potencia de hilos del servidor de GitHub
         make -j$(nproc)
 
     # 4. Organizar y verificar que la biblioteca dinámica se generara correctamente
@@ -51,20 +67,15 @@ jobs:
       run: |
         mkdir -p release_so
         
-        # Extraer cualquier archivo .so que se haya compilado en el árbol de construcción
+        # Extraer el archivo .so compilado
         find build/ -name "*.so" -exec cp {} release_so/ \;
         
-        # Fallback de emergencia en todo el repositorio por seguridad
-        if [ ! "$(ls -A release_so)" ]; then
-          find . -name "*.so" -exec cp {} release_so/ \;
-        fi
-        
-        # Validar físicamente que el archivo sea un binario de 64 bits para ARM (Mali-G52)
+        # Validar físicamente que sea un binario ELF de 64 bits para ARM (Mali-G52)
         if [ "$(ls -A release_so)" ]; then
-          echo "¡Éxito! Binario localizado y extraído de forma correcta."
+          echo "¡Éxito! Binario libVkLayer_bcn.so localizado y extraído de forma correcta."
           file release_so/*.so
         else
-          echo "Error: La compilación no generó ninguna biblioteca dinámica .so válida."
+          echo "Error crítico: La compilación con CMake no generó ningún archivo .so."
           exit 1
         fi
 
@@ -74,8 +85,26 @@ jobs:
         mkdir -p release_package
         cp release_so/*.so release_package/
         
-        # Buscar el archivo de manifiesto JSON de la capa Vulkan e incluirlo en el paquete
-        find . -name "VkLayer_bcn.json" -exec cp {} release_package/ \;
+        # Buscar el archivo de manifiesto JSON de la capa Vulkan si existe, o crear uno básico si falta
+        MANIFEST=$(find . -name "VkLayer_bcn.json" | head -n 1)
+        if [ ! -z "$MANIFEST" ]; then
+          cp "$MANIFEST" release_package/
+        else
+          # Si no tienes el JSON en tu fork, generamos uno base compatible con Vulkan 1.1 para que no falle el empaquetado
+          cat << 'EOF' > release_package/VkLayer_bcn.json
+          {
+              "file_format_version" : "1.0.0",
+              "layer" : {
+                  "name": "VK_LAYER_BIFROST_BcnDecompress",
+                  "type": "GLOBAL",
+                  "library_path": "./libVkLayer_bcn.so",
+                  "api_version": "1.1.0",
+                  "implementation_version": "1",
+                  "description": "BCn Texture Decompression Compute Layer for Mali-G52"
+              }
+          }
+          EOF
+        fi
         
         # Crear el archivo comprimido final solicitado por tu pipeline
         tar -I zstd -cf layer.tzst -C release_package .
