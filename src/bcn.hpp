@@ -14,12 +14,12 @@ struct push_constants {
 	int use_image_view;
 };
 
-bool is_s3tc(VkFormat);
-bool is_rgtc(VkFormat);
-bool is_bc6(VkFormat);
-bool is_bc7(VkFormat);
-bool is_supported_bcn_format(struct device *, VkFormat);
-VkFormat get_format_for_bcn(VkFormat);
+bool is_s3tc(VkFormat format);
+bool is_rgtc(VkFormat format);
+bool is_bc6(VkFormat format);
+bool is_bc7(VkFormat format);
+bool is_supported_bcn_format(struct device *device, VkFormat format);
+VkFormat get_format_for_bcn(VkFormat format);
 VkResult create_bcn_compute_pipelines(struct device *dev);
 VkResult decompress_bcn_compute(struct device *dev,
                        			VkCommandBuffer commandbuffer,
@@ -31,4 +31,5 @@ VkResult decompress_bcn_compute(struct device *dev,
                        			VkImageLayout dstImageLayout);
 
 #endif
+
 
