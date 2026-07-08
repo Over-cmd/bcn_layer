@@ -12,31 +12,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clonar el código fuente de tu repositorio Over-cmd/bcn_layer
+    # 1. Clonar de forma limpia el código de tu bifurcación Over-cmd/bcn_layer
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (Mandatorio para compilar con Gradle en Android)
+    # 2. Configurar Java (Requerido para la compatibilidad base de Android)
     - name: Configurar Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # 3. Configurar el Android SDK y el NDK automáticamente
-    - name: Configurar Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: '25.2.9519653'
+    # 3. PARCHE CRÍTICO: Configurar las variables del Android NDK que ya viene preinstalado en GitHub
+    # Evitamos descargar componentes externos para que sdkmanager no falle con código 1.
+    - name: Localizar Android NDK del sistema
+      run: |
+        # Las imágenes virtuales de GitHub Actions ya incluyen múltiples NDK estables.
+        # Exportamos la ruta para que Gradle o CMake la detecten inmediatamente.
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/default" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/default" >> $GITHUB_ENV
 
     # 4. Dar permisos de ejecución al script de Gradle local
     - name: Dar permisos a Gradlew
       run: chmod +x ./gradlew
 
     # 5. Compilar el proyecto usando la tarea nativa de Gradle
-    # Esto compilará el código C++ y generará el archivo .so para arm64-v8a de forma automática
-    - name: Compilar con Gradle (CMake nativo de Android)
-      run: ./gradlew assembleRelease --no-daemon
+    # Aceptamos las licencias automáticamente mediante la bandera de entorno correspondientes
+    - name: Compilar con Gradle
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        ./gradlew assembleRelease --no-daemon
 
     # 6. Organizar el binario .so final de 64 bits para el Unisoc T618
     - name: Organizar y Verificar Binario .so
