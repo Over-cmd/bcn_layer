@@ -64,9 +64,20 @@ BCnLayer_WaitForFences(VkDevice device,
     
 	for (uint32_t i = 0; i < fenceCount; i++) {
 		struct fence *fence = get_fence(pFences[i]);
+		if (!fence)
+			continue;
+
+		// PARCHE MALI-G52: Si waitAll es falso, solo liberamos si este fence específico ha completado su ejecución
+		if (!waitAll && fenceCount > 1 && dev->table.GetFenceStatus(device, pFences[i]) != VK_SUCCESS)
+			continue;
+
 		for (auto it = fence->staging_buffers.begin(); it != fence->staging_buffers.end();) {
-			dev->table.DestroyBuffer(device, (*it)->handle, (*it)->alloc);
-			dev->table.FreeMemory(device, (*it)->memory, (*it)->alloc);
+			if ((*it)->handle != VK_NULL_HANDLE) {
+				dev->table.DestroyBuffer(device, (*it)->handle, (*it)->alloc);
+			}
+			if ((*it)->memory != VK_NULL_HANDLE) {
+				dev->table.FreeMemory(device, (*it)->memory, (*it)->alloc);
+			}
 			it = fence->staging_buffers.erase(it);
 		}
 	}
@@ -85,7 +96,21 @@ BCnLayer_DestroyFence(VkDevice device,
 	if (!dev)
 		return;
 
-	if (fence != VK_NULL_HANDLE)
+	if (fence != VK_NULL_HANDLE) {
+		struct fence *f = get_fence(fence);
+		// PARCHE MALI-G52: Purga preventiva para evitar fugas si el fence es destruido antes de un Wait explícito
+		if (f && !dev->use_image_view) {
+			for (auto& buf : f->staging_buffers) {
+				if (buf->handle != VK_NULL_HANDLE) dev->table.DestroyBuffer(device, buf->handle, buf->alloc);
+				if (buf->memory != VK_NULL_HANDLE) dev->table.FreeMemory(device, buf->memory, buf->alloc);
+			}
+			f->staging_buffers.clear();
+		}
+		dev->table.DestroyFence(device, fence, pAllocator);
+	}
+		
+	fencesMap.erase(fence);
+}
 		dev->table.DestroyFence(device, fence, pAllocator);
 		
 	fencesMap.erase(fence);
