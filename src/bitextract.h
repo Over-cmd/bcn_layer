@@ -31,12 +31,13 @@ int extract_bits(uvec4 payload, int offset, int bits)
 	if (bits <= 0)
 		result = 0;
 	else if ((last_offset >> 5) == (offset >> 5))
-		result = int(bitfieldExtract(payload[offset >> 5], offset & 31, bits));
+		// PARCHE MALI-G52: Enmascaramos el índice del vector con & 3 para evitar desbordamientos de registro
+		result = int(bitfieldExtract(payload[(offset >> 5) & 3], offset & 31, bits));
 	else
 	{
 		int first_bits = 32 - (offset & 31);
-		int result_first = int(bitfieldExtract(payload[offset >> 5], offset & 31, first_bits));
-		int result_second = int(bitfieldExtract(payload[(offset >> 5) + 1], 0, bits - first_bits));
+		int result_first = int(bitfieldExtract(payload[(offset >> 5) & 3], offset & 31, first_bits));
+		int result_second = int(bitfieldExtract(payload[((offset >> 5) + 1) & 3], 0, bits - first_bits));
 		result = result_first | (result_second << first_bits);
 	}
 	return result;
@@ -50,12 +51,13 @@ int extract_bits_sign(uvec4 payload, int offset, int bits)
 	if (bits <= 0)
 		result = 0;
 	else if ((last_offset >> 5) == (offset >> 5))
-		result = bitfieldExtract(int(payload[offset >> 5]), offset & 31, bits);
+		// PARCHE MALI-G52: Enmascaramos el índice del vector con & 3
+		result = bitfieldExtract(int(payload[(offset >> 5) & 3]), offset & 31, bits);
 	else
 	{
 		int first_bits = 32 - (offset & 31);
-		int result_first = int(bitfieldExtract(payload[offset >> 5], offset & 31, first_bits));
-		int result_second = bitfieldExtract(int(payload[(offset >> 5) + 1]), 0, bits - first_bits);
+		int result_first = int(bitfieldExtract(payload[(offset >> 5) & 3], offset & 31, first_bits));
+		int result_second = bitfieldExtract(int(payload[((offset >> 5) + 1) & 3]), 0, bits - first_bits);
 		result = result_first | (result_second << first_bits);
 	}
 	return result;
@@ -69,25 +71,24 @@ int extract_bits_reverse(uvec4 payload, int offset, int bits)
 	if (bits <= 0)
 		result = 0;
 	else if ((last_offset >> 5) == (offset >> 5))
-		result = int(bitfieldReverse(bitfieldExtract(payload[offset >> 5], offset & 31, bits)) >> (32 - bits));
+		// PARCHE MALI-G52: Enmascaramos el índice del vector con & 3
+		result = int(bitfieldReverse(bitfieldExtract(payload[(offset >> 5) & 3], offset & 31, bits)) >> (32 - bits));
 	else
 	{
 		int first_bits = 32 - (offset & 31);
-		uint result_first = bitfieldExtract(payload[offset >> 5], offset & 31, first_bits);
-		uint result_second = bitfieldExtract(payload[(offset >> 5) + 1], 0, bits - first_bits);
+		uint result_first = bitfieldExtract(payload[(offset >> 5) & 3], offset & 31, first_bits);
+		uint result_second = bitfieldExtract(payload[((offset >> 5) + 1) & 3], 0, bits - first_bits);
 		result = int(bitfieldReverse(result_first | (result_second << first_bits)) >> (32 - bits));
 	}
 	return result;
 }
 
-/* Taken from here https://jvm-gaming.org/t/fast-srgb-conversion-glsl-snippet/57321 */
-
+/* Taken from here https://jvm-gaming.org */
 vec3 srgbDecode(vec3 color){
 	float r = color.r < 0.04045 ? (1.0 / 12.92) * color.r : pow((color.r + 0.055) * (1.0 / 1.055), 2.4);
 	float g = color.g < 0.04045 ? (1.0 / 12.92) * color.g : pow((color.g + 0.055) * (1.0 / 1.055), 2.4);
 	float b = color.b < 0.04045 ? (1.0 / 12.92) * color.b : pow((color.b + 0.055) * (1.0 / 1.055), 2.4);
 	return vec3(r, g, b);
 }
-
 
 #endif
