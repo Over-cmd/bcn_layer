@@ -2,142 +2,72 @@ name: Generar layer.tzst Nativo Vulkan 1.1 para Unisoc T618
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch: # Permite compilar a mano con un botón
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Permite ejecutar el flujo manualmente desde la pestaña Actions
 
 jobs:
-  build-layer:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Descargar el código de tu repositorio
+    # 1. Descargar el código fuente desde tu repositorio Over-cmd/bcn_layer
+    - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    - name: Instalar herramientas del sistema y Zstd
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget zip zstd
+    # 2. Configurar el entorno de Java (necesario para algunas herramientas secundarias de Android)
+    - name: Configurar Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
 
-    - name: Crear árbol de directorios estándar Linux
-      run: |
-        mkdir -p package/usr/lib
-        mkdir -p package/usr/share/vulkan/icd.d
+    # 3. Instalar el Android NDK adecuado para asegurar compatibilidad con la plataforma
+    - name: Instalar Android NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: '25.2.9519653' # Versión estable y compatible con compilación cruzada arm64
 
-    - name: Extraer binario de Khronos y tu código modificado
+    # 4. Configurar e invocar CMake con el Toolchain del NDK para generar libVkLayer_bcn.so
+    - name: Configurar y Compilar con CMake
       run: |
-        # 1. Descargamos la capa oficial de Khronos de 64 bits para Android (el puente)
-        wget https://github.com -O khronos.tar.gz
-        tar -xzf khronos.tar.gz
-        cp android-binaries-v1.3.261/arm64-v8a/libVkLayer_khronos_validation.so package/usr/lib/
+        mkdir -p build && cd build
+        cmake .. \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-29 \
+          -DCMAKE_BUILD_TYPE=Release
         
-        # 2. Copia aquí tu archivo de biblioteca modificado (.so) del BCn Layer si ya lo tienes en el repositorio.
-        # Asegúrate de que tu binario termine dentro de: package/usr/lib/
+        # Compilar usando todos los hilos disponibles en el servidor de GitHub
+        make -j$(nproc)
 
-    - name: Crear Manifiesto de Capa Vulkan (wrapper_icd_aarch64.json)
+    # 5. Comprobar que el binario ELF aarch64 se haya generado correctamente
+    - name: Verificar binario compilado
       run: |
-        cat <<EOF > package/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json
-        {
-          "file_format_version": "1.0.0",
-          "layer": {
-            "name": "VK_LAYER_KHRONOS_validation",
-            "type": "GLOBAL",
-            "library_path": "libVkLayer_khronos_validation.so",
-            "api_version": "1.1.128",
-            "implementation_version": "1",
-            "description": "BCN Layer Mod Vulkan 1.1 - Unisoc T618"
-          }
-        }
-        EOF
+        if [ -f "build/libVkLayer_bcn.so" ]; then
+          echo "¡Éxito! El archivo libVkLayer_bcn.so ha sido generado correctamente."
+          file build/libVkLayer_bcn.so
+        else
+          echo "Error: No se encontró libVkLayer_bcn.so en el directorio de salida."
+          exit 1
+        fi
 
-    - name: Crear Regulador de Entorno Especial para Mali (meta.json)
+    # 6. Comprimir el binario en formato .tzst (Tar + Zstandard) como solicita tu pipeline
+    - name: Empaquetar en layer.tzst
       run: |
-        cat <<EOF > package/meta.json
-        {
-          "nombre": "BCN Layer Vulkan 1.1 (Unisoc T618)",
-          "versión": "1.1.0",
-          "autor": "Usuario Mod (Pippetocrypto base)",
-          "description": "Capa modificada para transcodificación BCn a ASTC optimizada para Mali-G52.",
-          "driverType": "VulkanWrapper",
-          "ambiente": {
-            "VULKAN_WRAPPER_VERSION": "1.1",
-            "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json",
-            "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation",
-            "MESA_VK_IGNORE_CONFORMANCE_WARNINGS": "1",
-            "DXVK_FILTER_DEVICE_NAME": "Mali"
-          }
-        }
-        EOF
-
-    - name: Comprimir contenido plano en formato nativo TZST
-      run: |
-        cd package
-        # Comprimimos directamente el contenido plano usando zstd de nivel 19
-        tar -I 'zstd -19 -T0' -cf ../layer.tzst *
-        cd ..
-
-    - name: Guardar layer.tzst en la carpeta de assets de tu repositorio
-      run: |
-        mkdir -p app/src/main/assets/graphics_driver
-        cp layer.tzst app/src/main/assets/graphics_driver/layer.tzst
+        mkdir -p release
+        cp build/libVkLayer_bcn.so release/
+        # Si tienes el archivo JSON de manifiesto en la raíz, cópialo también aquí:
+        if [ -f "VkLayer_bcn.json" ]; then cp VkLayer_bcn.json release/; fi
         
-        # El bot guarda de forma automática el archivo comprimido final en tu repositorio
-        git config --global user.name "GitHub Actions Bot"
-        git config --global user.email "actions@github.com"
-        git add app/src/main/assets/graphics_driver/layer.tzst
-        git commit -m "Actualización automatizada de layer.tzst puro para Mali-G52" || echo "No hay cambios que guardar"
-        git push
-        
-        # Si tienes tu binario libvulkan_wrapper.so en otra ruta, asegúrate de que esté en package/usr/lib/
+        # Crear el paquete comprimido solicitado
+        tar -I zstd -cf layer.tzst -C release .
 
-    - name: "INTRODUCIR ICD: Crear el manifiesto JSON con soporte de Capa"
-      run: |
-        cat <<EOF > package/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json
-        {
-          "file_format_version": "1.0.0",
-          "layer": {
-            "name": "VK_LAYER_KHRONOS_validation",
-            "type": "GLOBAL",
-            "library_path": "libVkLayer_khronos_validation.so",
-            "api_version": "1.1.128",
-            "implementation_version": "1",
-            "description": "Khronos Vulkan Validation Layer para BCN Unisoc T618"
-          }
-        }
-        EOF
-
-    - name: Crear el archivo meta.json Regulador de Entorno
-      run: |
-        cat <<EOF > package/meta.json
-        {
-          "nombre": "BCN Layer - Unisoc T618 Vulkan 1.1 Fixed",
-          "versión": "1.1.0",
-          "autor": "Usuario Mod & Khronos",
-          "description": "Wrapper personalizado con inyección de Khronos Validation Layer para GPU Mali-G52.",
-          "driverType": "VulkanWrapper",
-          "ambiente": {
-            "VULKAN_WRAPPER_VERSION": "1.1",
-            "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/wrapper_icd_aarch64.json",
-            "VK_INSTANCE_LAYERS": "VK_LAYER_KHRONOS_validation",
-            "MESA_VK_IGNORE_CONFORMANCE_WARNINGS": "1",
-            "DXVK_FILTER_DEVICE_NAME": "Mali"
-          }
-        }
-        EOF
-
-    - name: "COMPILACION DEL NUEVO wrapper.tzst"
-      run: |
-        cd package
-        tar -I 'zstd -19 -T0' -cf ../wrapper.tzst *
-        cd ..
-
-    # Este paso guarda el nuevo wrapper.tzst directamente dentro de las carpetas de tu repositorio
-    - name: Guardar wrapper.tzst actualizado en el repositorio
-      run: |
-        mkdir -p app/src/main/assets/graphics_driver
-        cp wrapper.tzst app/src/main/assets/graphics_driver/wrapper.tzst
-        
-        git config --global user.name "GitHub Actions Bot"
-        git config --global user.email "actions@github.com"
-        git add app/src/main/assets/graphics_driver/wrapper.tzst
-        git commit -m "Actualizar wrapper.tzst con Khronos Validation Layer para Mali GPU" || echo "No hay cambios que confirmar"
-        git push
+    # 7. Subir el archivo empaquetado final a los artefactos de la Action de GitHub
+    - name: Subir artefacto final
+      uses: actions/upload-artifact@v4
+      with:
+        name: layer-tzst-unisoc-t618
+        path: layer.tzst
+        retention-days: 5
