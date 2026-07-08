@@ -28,14 +28,7 @@ create_staging_buffer(struct device *dev, int size)
 		Logger::log("error", "Failed to create staging buffer, res %d", result);
 		return NULL;
 	}
-/*
-	VkMemoryDedicatedAllocateInfo buffer_allocate_info = {
-		.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
-		.pNext = nullptr,
-		.image = VK_NULL_HANDLE,
-		.buffer = buffer
-	};
-*/
+
 	VkMemoryAllocateInfo allocate_info = {
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.pNext = nullptr,
@@ -44,14 +37,41 @@ create_staging_buffer(struct device *dev, int size)
 	};
 
 	result = table.AllocateMemory(device, &allocate_info, nullptr, &memory);
+	
+	// PARCHE MALI-G52: Fallback si la memoria por defecto falla debido a alineaciones estrictas de Unisoc
+	if (result != VK_SUCCESS && dev->table.GetBufferMemoryRequirements != nullptr) {
+		VkMemoryRequirements memReqs;
+		dev->table.GetBufferMemoryRequirements(device, buffer, &memReqs);
+		
+		VkPhysicalDeviceMemoryProperties memProps;
+		instanceDispatch[GetKey(dev->physical)].GetPhysicalDeviceMemoryProperties(dev->physical, &memProps);
+		
+		uint32_t fallbackIndex = UINT32_MAX;
+		for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+			if ((memReqs.memoryTypeBits & (1 << i)) && 
+				(memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+				fallbackIndex = i;
+				break;
+			}
+		}
+		if (fallbackIndex != UINT32_MAX) {
+			allocate_info.memoryTypeIndex = fallbackIndex;
+			allocate_info.allocationSize = memReqs.size;
+			result = table.AllocateMemory(device, &allocate_info, nullptr, &memory);
+		}
+	}
+
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to allocate staging buffer memory, res %d", result);
+		table.DestroyBuffer(device, buffer, nullptr);
 		return NULL;
 	}
 
 	result = table.BindBufferMemory(device, buffer, memory, 0);
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to bind staging buffer memory, res %d", result);
+		table.FreeMemory(device, memory, nullptr);
+		table.DestroyBuffer(device, buffer, nullptr);
 		return NULL;
 	}
 
@@ -138,8 +158,10 @@ BCnLayer_BindBufferMemory(VkDevice device,
 	}
 
 	struct buffer *buf = find_buffer(buffer);
-	buf->memory = memory;
-	buf->offset = memoryOffset;
+	if (buf) {
+		buf->memory = memory;
+		buf->offset = memoryOffset;
+	}
 
 	return VK_SUCCESS;
 }
