@@ -12,72 +12,75 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clonar de forma limpia el código de tu bifurcación Over-cmd/bcn_layer
+    # 1. Clonar de forma limpia tu código fuente de Over-cmd/bcn_layer
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (Requerido para la compatibilidad base de Android)
-    - name: Configurar Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    # 3. PARCHE CRÍTICO: Configurar las variables del Android NDK que ya viene preinstalado en GitHub
-    # Evitamos descargar componentes externos para que sdkmanager no falle con código 1.
-    - name: Localizar Android NDK del sistema
+    # 2. Configurar el compilador cruzado usando el NDK oficial integrado en GitHub
+    - name: Configurar Entorno de Compilación
       run: |
-        # Las imágenes virtuales de GitHub Actions ya incluyen múltiples NDK estables.
-        # Exportamos la ruta para que Gradle o CMake la detecten inmediatamente.
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/default" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/default" >> $GITHUB_ENV
 
-    # 4. Dar permisos de ejecución al script de Gradle local
-    - name: Dar permisos a Gradlew
-      run: chmod +x ./gradlew
-
-    # 5. Compilar el proyecto usando la tarea nativa de Gradle
-    # Aceptamos las licencias automáticamente mediante la bandera de entorno correspondientes
-    - name: Compilar con Gradle
+    # 3. BÚSQUEDA INTELIGENTE Y COMPILACIÓN CON CMAKE
+    # Este paso encuentra el CMakeLists.txt sin importar la carpeta en la que esté guardado
+    - name: Configurar y Compilar con CMake (Búsqueda Automática)
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-        ./gradlew assembleRelease --no-daemon
-
-    # 6. Organizar el binario .so final de 64 bits para el Unisoc T618
-    - name: Organizar y Verificar Binario .so
-      run: |
-        mkdir -p build
+        # Localizar en qué subcarpeta del repositorio está el archivo de configuración real
+        CMAKE_DIR=$(find . -name "CMakeLists.txt" -exec dirname {} \; | head -n 1)
         
-        # Buscar el archivo .so en las carpetas de salida estándar de Gradle/NDK
-        find . -name "libVkLayer_bcn.so" -exec cp {} build/ \;
-        
-        # Fallback por si la biblioteca tiene otro nombre en tu fork
-        if [ ! "$(ls -A build)" ]; then
-          find . -name "*.so" -exec cp {} build/ \;
+        if [ -z "$CMAKE_DIR" ]; then
+          echo "Error crítico: No se encontró ningún archivo CMakeLists.txt en todo el repositorio."
+          exit 1
         fi
         
-        # Validación física del binario para la GPU Mali-G52
-        if [ "$(ls -A build)" ]; then
-          echo "¡Éxito! Binario localizado de forma correcta en el árbol."
-          file build/*.so
+        echo "¡Archivo encontrado en la ruta!: $CMAKE_DIR"
+        
+        # Crear la carpeta de construcción e invocar el compilador cruzado de Android
+        mkdir -p build && cd build
+        cmake "$GITHUB_WORKSPACE/$CMAKE_DIR" \
+          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/default/build/cmake/android.toolchain.cmake \
+          -DANDROID_ABI=arm64-v8a \
+          -DANDROID_PLATFORM=android-29 \
+          -DCMAKE_BUILD_TYPE=Release
+        
+        # Compilar usando la máxima potencia del servidor
+        make -j$(nproc)
+
+    # 4. Organizar y verificar que la biblioteca dinámica se generara correctamente
+    - name: Organizar y Verificar Binario .so
+      run: |
+        mkdir -p release_so
+        
+        # Extraer cualquier archivo .so que se haya compilado en el árbol de construcción
+        find build/ -name "*.so" -exec cp {} release_so/ \;
+        
+        # Fallback de emergencia en todo el repositorio por seguridad
+        if [ ! "$(ls -A release_so)" ]; then
+          find . -name "*.so" -exec cp {} release_so/ \;
+        fi
+        
+        # Validar físicamente que el archivo sea un binario de 64 bits para ARM (Mali-G52)
+        if [ "$(ls -A release_so)" ]; then
+          echo "¡Éxito! Binario localizado y extraído de forma correcta."
+          file release_so/*.so
         else
-          echo "Error: El proceso de compilación no generó ningún archivo de biblioteca .so."
+          echo "Error: La compilación no generó ninguna biblioteca dinámica .so válida."
           exit 1
         fi
 
-    # 7. Estructurar la carpeta de distribución y generar el archivo layer.tzst comprimido
+    # 5. Estructurar la distribución y empaquetar en layer.tzst (Tar + Zstandard)
     - name: Empaquetar en layer.tzst
       run: |
-        mkdir -p release
-        cp build/*.so release/
+        mkdir -p release_package
+        cp release_so/*.so release_package/
         
-        # Copiar el manifiesto JSON de la capa de Vulkan buscando en todo el repositorio
-        find . -name "VkLayer_bcn.json" -exec cp {} release/ \;
+        # Buscar el archivo de manifiesto JSON de la capa Vulkan e incluirlo en el paquete
+        find . -name "VkLayer_bcn.json" -exec cp {} release_package/ \;
         
-        # Crear la compresión nativa Tar + Zstandard solicitada por tu pipeline
-        tar -I zstd -cf layer.tzst -C release .
+        # Crear el archivo comprimido final solicitado por tu pipeline
+        tar -I zstd -cf layer.tzst -C release_package .
 
-    # 8. Subir el archivo empaquetado final a la interfaz de tus GitHub Actions
+    # 6. Guardar el archivo layer.tzst como un artefacto descargable en tus Actions de GitHub
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
