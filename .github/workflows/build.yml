@@ -44,7 +44,7 @@ jobs:
           echo "¡Parche aplicado con éxito en bcn_layer.hpp!"
         fi
 
-    # 6. COMPILACIÓN REAL DE SHADERS (SPIR-V) USANDO GLSLANGVALIDATOR Y XXD GLOBAL
+    # 6. COMPILACIÓN REAL DE SHADERS (SPIR-V) CON PARCHE DE EXTENSIÓN DE INCLUSIÓN
     - name: Precompilar Shaders GLSL a Cabeceras C++ (*_spv.h)
       run: |
         cd src/
@@ -54,7 +54,10 @@ jobs:
           local var_name=$2
           local output_h=$3
           
-          # Compilar el código GLSL a binario SPIR-V plano usando la herramienta del sistema
+          # PARCHE CRÍTICO MALI-G52: Inyectar la extensión requerida para activar los #include en glslangValidator
+          sed -i '/#version/a \#extension GL_GOOGLE_include_directive : require' "$file"
+          
+          # Compilar el código GLSL a binario SPIR-V plano
           glslangValidator -V "$file" -o temp.spv
           
           # Convertir el archivo temporal en un array C usando xxd
@@ -68,7 +71,7 @@ jobs:
           rm -f temp.spv
         }
 
-        # Ejecutar el compilador para cada sombreador de cómputo mapeado en bcn.cpp
+        # Ejecutar el compilador inyectando dinámicamente la extensión en cada shader mapeado
         compile_shader s3tc.comp s3tc_spv s3tc_spv.h
         compile_shader s3tc_iv.comp s3tc_iv_spv s3tc_iv_spv.h
         compile_shader bc6.comp bc6_spv bc6_spv.h
