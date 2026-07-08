@@ -107,9 +107,10 @@ jobs:
         
         target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
         
-        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3)
+        # OPTIMIZACIÓN AGRESIVA MALI-G52: Añadido -ffast-math para acelerar los cálculos de color y texturas
+        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3 -ffast-math)
         EOF
-        echo "¡Archivo CMakeLists.txt generado con éxito!"
+        echo "¡Archivo CMakeLists.txt generado con éxito con soporte -ffast-math!"
 
     # 8. CONFIGURAR Y COMPILAR EL PROYECTO CON CMAKE Y NINJA
     - name: Configurar y Compilar con CMake y Ninja
@@ -149,7 +150,7 @@ jobs:
         if [ ! -z "$MANIFEST" ]; then
           cp "$MANIFEST" release_package/
         else
-          # Corrección: Se utiliza echo lineal para evitar fallos de delimitador EOF en bash de GitHub
+          # Uso de echo lineal seguro para evitar fallos de delimitador EOF en bash
           echo '{"file_format_version":"1.0.0","layer":{"name":"VK_LAYER_BIFROST_BcnDecompress","type":"GLOBAL","library_path":"./libVkLayer_bcn.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer for Mali-G52"}}' > release_package/VkLayer_bcn.json
         fi
         
