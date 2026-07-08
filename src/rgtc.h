@@ -36,7 +36,8 @@ float decode_alpha_rgtc(uvec2 payload, int linear_pixel)
 	else if (bit_offset >= 32)
 		bits = bitfieldExtract(payload.y, bit_offset - 32, 3);
 	else
-		bits = bitfieldExtract(payload.x, 31, 1) | ((payload.y & 3) << 1);
+		// PARCHE MALI-G52: Forzamos una máscara explícita de tipo unsigned (0x3u) para evitar corrupciones de registro en Bifrost
+		bits = bitfieldExtract(payload.x, 31, 1) | ((payload.y & 0x3u) << 1u);
 
 	float res;
 
