@@ -1,7 +1,37 @@
-    # Configurar y Compilar de forma nativa con ndk-build
+name: Generar layer.tzst Nativo Vulkan 1.1 para Unisoc T618
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Clonar el código fuente de tu bifurcación de forma limpia
+    - name: Checkout del repositorio
+      uses: actions/checkout@v4
+
+    # 2. Configurar Java (requerido por el entorno base de herramientas de Android)
+    - name: Configurar Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    # 3. Instalar el NDK oficial de Android (versión estable compatible con arm64)
+    - name: Instalar Android NDK
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: '25.2.9519653'
+
+    # 4. Compilar usando ndk-build para procesar el archivo Android.mk nativo de tu fork
     - name: Compilar con Android NDK-Build
       run: |
-        # 1. Ejecutar ndk-build apuntando a la arquitectura del Unisoc T618
         $ANDROID_NDK_HOME/ndk-build \
           NDK_PROJECT_PATH=$GITHUB_WORKSPACE \
           APP_BUILD_SCRIPT=$GITHUB_WORKSPACE/Android.mk \
@@ -10,15 +40,48 @@
           NDK_DEBUG=0 \
           -j$(nproc)
 
-        # 2. Crear la carpeta build para mantener compatibilidad con tus pasos de empaquetado
+    # 5. Crear la carpeta build y mover el binario generado de forma inteligente
+    - name: Organizar y Verificar Binario .so
+      run: |
         mkdir -p build
         
-        # 3. Mover el binario generado por ndk-build (que se guarda en libs/arm64-v8a) a build
+        # Buscar el archivo .so generado en los directorios estándares de salida de ndk-build
         if [ -f "libs/arm64-v8a/libVkLayer_bcn.so" ]; then
           cp libs/arm64-v8a/libVkLayer_bcn.so build/
         elif [ -f "obj/local/arm64-v8a/libVkLayer_bcn.so" ]; then
           cp obj/local/arm64-v8a/libVkLayer_bcn.so build/
         else
-          # Buscar si el archivo .so tiene otro nombre parecido en el árbol de salida
+          # Si ndk-build le asignó otro nombre al archivo .so, lo busca y lo extrae
           find . -name "*.so" -exec cp {} build/ \;
         fi
+        
+        # Validación física del binario para comprobar arquitectura ARM de 64 bits
+        if [ -f "build/libVkLayer_bcn.so" ] || [ "$(ls -A build)" ]; then
+          echo "¡Éxito! El binario de la capa Vulkan se ha generado correctamente."
+          file build/*.so
+        else
+          echo "Error: No se pudo localizar el archivo .so compilado."
+          exit 1
+        fi
+
+    # 6. Estructurar el directorio de distribución y comprimir en layer.tzst (Tar + Zstandard)
+    - name: Empaquetar en layer.tzst
+      run: |
+        mkdir -p release
+        cp build/*.so release/
+        
+        # Incluir el manifiesto de la capa Vulkan si existe en la raíz de tu fork
+        if [ -f "VkLayer_bcn.json" ]; then 
+          cp VkLayer_bcn.json release/
+        fi
+        
+        # Crear el archivo comprimido final solicitado por tu pipeline
+        tar -I zstd -cf layer.tzst -C release .
+
+    # 7. Cargar el archivo comprimido final como un artefacto descargable en el panel de GitHub
+    - name: Subir artefacto final
+      uses: actions/upload-artifact@v4
+      with:
+        name: layer-tzst-unisoc-t618
+        path: layer.tzst
+        retention-days: 5
