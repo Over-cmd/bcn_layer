@@ -43,8 +43,7 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	struct queue *q = get_queue(queue);
 	if (!q) {
-		// Fallback de emergencia si el puntero de la cola no está registrado
-		struct device *fallback_dev = get_device(GetKey(queue));
+		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(queue));
 		if (fallback_dev) {
 			return fallback_dev->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 		}
@@ -57,7 +56,6 @@ BCnLayer_QueueSubmit(VkQueue queue,
 		VkSubmitInfo submit_info = pSubmitInfos[i];
 		for (uint32_t j = 0; j < submit_info.commandBufferCount; j++) {
 			struct command_buffer *cb = get_command_buffer(submit_info.pCommandBuffers[j]);
-			// PARCHE MALI-G52: Validamos que el command buffer esté registrado para evitar un Crash por puntero nulo
 			if (cb) {
 				cb->fence = f;
 			}
@@ -66,3 +64,4 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 }
+
