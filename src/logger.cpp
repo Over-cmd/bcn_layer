@@ -53,7 +53,9 @@ namespace Logger {
 			return;
 		}
 
-		const char *option = std::strtok(bcn_layer_log_env, ",");
+		// PARCHE MALI-G52: Duplicamos de forma segura la cadena para evitar que strtok corrompa la memoria global del entorno
+		std::vector<char> env_copy(bcn_layer_log_env, bcn_layer_log_env + std::strlen(bcn_layer_log_env) + 1);
+		char *option = std::strtok(env_copy.data(), ",");
 
 		while (option != nullptr) {
 			bcn_layer_log_mask |= get_debug_flag(option);
