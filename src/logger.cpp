@@ -1,4 +1,6 @@
 #include "logger.hpp"
+#include <vector>
+#include <cstring>
 
 namespace Logger {
 	static struct bcn_layer_log bcn_layer_log_options[] = {
@@ -53,7 +55,6 @@ namespace Logger {
 			return;
 		}
 
-		// PARCHE MALI-G52: Duplicamos de forma segura la cadena para evitar que strtok corrompa la memoria global del entorno
 		std::vector<char> env_copy(bcn_layer_log_env, bcn_layer_log_env + std::strlen(bcn_layer_log_env) + 1);
 		char *option = std::strtok(env_copy.data(), ",");
 
@@ -63,3 +64,4 @@ namespace Logger {
 		}
 	}
 }
+
