@@ -40,7 +40,6 @@ BCnLayer_CreateFence(VkDevice device,
 	}
 
 	return VK_SUCCESS;
-	
 }
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
@@ -108,10 +107,6 @@ BCnLayer_DestroyFence(VkDevice device,
 		}
 		dev->table.DestroyFence(device, fence, pAllocator);
 	}
-		
-	fencesMap.erase(fence);
-}
-		dev->table.DestroyFence(device, fence, pAllocator);
 		
 	fencesMap.erase(fence);
 }
