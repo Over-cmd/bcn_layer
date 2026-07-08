@@ -12,7 +12,7 @@ struct buffer {
     const VkAllocationCallbacks *alloc;
 };
 
-struct buffer *find_buffer(VkBuffer);
+struct buffer *find_buffer(VkBuffer buffer);
 std::unique_ptr<struct buffer> create_staging_buffer(struct device *dev, int size);
 
 #endif
