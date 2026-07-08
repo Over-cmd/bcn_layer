@@ -110,6 +110,3 @@ BCnLayer_DestroyFence(VkDevice device,
 }
 
 
-	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
-}
-
