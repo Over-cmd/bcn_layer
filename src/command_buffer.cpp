@@ -40,6 +40,7 @@ BCnLayer_AllocateCommandBuffers(VkDevice device,
 		cmd->handle = pCommandBuffers[i];
 		cmd->device = dev;
 		cmd->pool = pAllocateInfo->commandPool;
+		cmd->fence = nullptr;
 		{
 			scoped_lock l(global_lock);
 			commandBuffersMap[pCommandBuffers[i]] = cmd;
@@ -80,21 +81,22 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 						      const VkBufferImageCopy *pRegions)
 {
 	VkLayerDispatchTable table;
-	VkResult result;
 
 	struct command_buffer *cb = get_command_buffer(commandBuffer);
-	if (!cb)
+	if (!cb) {
+		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(commandBuffer));
+		if (fallback_dev) {
+			fallback_dev->table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+		}
 		return;
+	}
 
 	struct device *dev = cb->device;
 	struct image *img = find_image(dstImage);
 	struct buffer *buf = find_buffer(srcBuffer);
 	
 	if (!img || !buf) {
-		struct device *fallback_dev = get_device(GetKey(commandBuffer));
-		if (fallback_dev) {
-			fallback_dev->table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
-		}
+		dev->table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 		return;
 	}
 
@@ -150,27 +152,11 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 			table.CmdCopyBufferToImage(commandBuffer,
 				staging_buf->handle, dstImage, dstImageLayout, 1, &copy_region);
 
-			// PARCHE MALI-G52: Evitamos caída de puntero nulo si el fence aún no ha sido asignado al búfer de comandos
 			if (cb->fence) {
 				cb->fence->staging_buffers.push_back(std::move(staging_buf));
 			} else {
-				// Resguardo de seguridad: Esperamos a que la GPU termine de procesar el comando inmediatamente si no hay fence
 				dev->table.DeviceWaitIdle(dev->handle);
 			}
 		}
 	}
-}
-
-	for (uint32_t i = 0; i < pAllocateInfo->commandBufferCount; i++) {
-		auto cmd = std::make_shared<struct command_buffer>();
-		cmd->handle = pCommandBuffers[i];
-		cmd->device = dev;
-		cmd->pool = pAllocateInfo->commandPool;
-		{
-			scoped_lock l(global_lock);
-			commandBuffersMap[pCommandBuffers[i]] = cmd;
-		}
-	}
-	
-	return VK_SUCCESS;
 }
