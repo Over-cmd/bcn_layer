@@ -1,73 +1,24 @@
-name: Generar layer.tzst Nativo Vulkan 1.1 para Unisoc T618
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch: # Permite ejecutar el flujo manualmente desde la pestaña Actions
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    # 1. Descargar el código fuente desde tu repositorio Over-cmd/bcn_layer
-    - name: Checkout del repositorio
-      uses: actions/checkout@v4
-
-    # 2. Configurar el entorno de Java (necesario para algunas herramientas secundarias de Android)
-    - name: Configurar Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    # 3. Instalar el Android NDK adecuado para asegurar compatibilidad con la plataforma
-    - name: Instalar Android NDK
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: '25.2.9519653' # Versión estable y compatible con compilación cruzada arm64
-
-    # 4. Configurar e invocar CMake con el Toolchain del NDK para generar libVkLayer_bcn.so
-    - name: Configurar y Compilar con CMake
+    # Configurar y Compilar de forma nativa con ndk-build
+    - name: Compilar con Android NDK-Build
       run: |
-        mkdir -p build && cd build
-        cmake .. \
-          -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-29 \
-          -DCMAKE_BUILD_TYPE=Release
+        # 1. Ejecutar ndk-build apuntando a la arquitectura del Unisoc T618
+        $ANDROID_NDK_HOME/ndk-build \
+          NDK_PROJECT_PATH=$GITHUB_WORKSPACE \
+          APP_BUILD_SCRIPT=$GITHUB_WORKSPACE/Android.mk \
+          APP_ABI=arm64-v8a \
+          APP_PLATFORM=android-29 \
+          NDK_DEBUG=0 \
+          -j$(nproc)
+
+        # 2. Crear la carpeta build para mantener compatibilidad con tus pasos de empaquetado
+        mkdir -p build
         
-        # Compilar usando todos los hilos disponibles en el servidor de GitHub
-        make -j$(nproc)
-
-    # 5. Comprobar que el binario ELF aarch64 se haya generado correctamente
-    - name: Verificar binario compilado
-      run: |
-        if [ -f "build/libVkLayer_bcn.so" ]; then
-          echo "¡Éxito! El archivo libVkLayer_bcn.so ha sido generado correctamente."
-          file build/libVkLayer_bcn.so
+        # 3. Mover el binario generado por ndk-build (que se guarda en libs/arm64-v8a) a build
+        if [ -f "libs/arm64-v8a/libVkLayer_bcn.so" ]; then
+          cp libs/arm64-v8a/libVkLayer_bcn.so build/
+        elif [ -f "obj/local/arm64-v8a/libVkLayer_bcn.so" ]; then
+          cp obj/local/arm64-v8a/libVkLayer_bcn.so build/
         else
-          echo "Error: No se encontró libVkLayer_bcn.so en el directorio de salida."
-          exit 1
+          # Buscar si el archivo .so tiene otro nombre parecido en el árbol de salida
+          find . -name "*.so" -exec cp {} build/ \;
         fi
-
-    # 6. Comprimir el binario en formato .tzst (Tar + Zstandard) como solicita tu pipeline
-    - name: Empaquetar en layer.tzst
-      run: |
-        mkdir -p release
-        cp build/libVkLayer_bcn.so release/
-        # Si tienes el archivo JSON de manifiesto en la raíz, cópialo también aquí:
-        if [ -f "VkLayer_bcn.json" ]; then cp VkLayer_bcn.json release/; fi
-        
-        # Crear el paquete comprimido solicitado
-        tar -I zstd -cf layer.tzst -C release .
-
-    # 7. Subir el archivo empaquetado final a los artefactos de la Action de GitHub
-    - name: Subir artefacto final
-      uses: actions/upload-artifact@v4
-      with:
-        name: layer-tzst-unisoc-t618
-        path: layer.tzst
-        retention-days: 5
