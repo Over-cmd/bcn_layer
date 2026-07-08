@@ -1,5 +1,5 @@
 #ifndef __LOGGER_HPP
-#define __LOGGER_HPP
+#define __COMMAND_BUFFER_HPP
 
 #include <sstream>
 #include <string>
@@ -16,6 +16,7 @@ namespace Logger {
 	};
 	
 	void log (const std::string& log_level, const char *format, ...);
+	void init();
 }
 
 #endif
