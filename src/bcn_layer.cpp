@@ -165,6 +165,16 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
 	
+	/* 🚨 EXCLUSIVO RESCATE MALI VÍDEO Y AUDIO:
+	   Si el buffer de la imagen se solicita con banderas de transferencia de destino o
+	   almacenamiento dinámico (típico de las cinemáticas dinámicas y el Swapchain), 
+	   rompemos la interceptación antes del switch. Esto hace que el frame pase en crudo 
+	   por software ultraligero, eliminando los tirones en los vídeos y estabilizando PulseAudio. */
+	if (usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) {
+		return instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceImageFormatProperties(physicalDevice,
+		       format, type, tiling, usage, flags, pImageFormatProperties);
+	}
+
 	switch(format) {
     	case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
    		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
@@ -250,6 +260,15 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
 	
+	/* 🚨 EXCLUSIVO RESCATE MALI VÍDEO Y AUDIO KHR2:
+	   Aplicamos el mismo escudo de desvío dinámico en la consulta estructurada para proteger 
+	   el Swapchain y las cinemáticas en los motores modernos. Si detectamos uso de transferencia 
+	   o almacenamiento de pantalla, dejamos pasar el frame en crudo de forma ultraligera. */
+	if (pImageFormatInfo->usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) {
+		return instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceImageFormatProperties2(physicalDevice,
+		       pImageFormatInfo, pImageFormatProperties);
+	}
+
 	switch(pImageFormatInfo->format) {
 		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
    		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
