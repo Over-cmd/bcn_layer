@@ -16,20 +16,20 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (Requerido para las herramientas del SDK)
+    # 2. Configurar Java (Requerido para las herramientas del SDK con versión v5 adaptada a Node 24)
     - name: Configurar Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '17'
-        cache: 'gradle'
+        # 🚨 SOLUCIÓN ERROR DE TRABAJO: Eliminamos cache: 'gradle'. Al ser un proyecto puro 
+        # de C/C++ y CMake, evitamos que la build aborte buscando archivos Gradle inexistentes.
 
     # 3. Configurar Android SDK y NDK oficiales estables
     - name: Configurar Android SDK y NDK
       uses: android-actions/setup-android@v3
       with:
-        # 🚨 BYPASS ERROR TOOLS: Inyectamos únicamente paquetes modernos y activos de Google.
-        # Al omitir la palabra 'tools' antigua, sdkmanager configura el entorno al 100% sin trabas.
+        # Bypass error tools inyectando únicamente paquetes modernos y activos de Google
         packages: 'platform-tools cmdline-tools;latest'
 
     # 4. Instalar Ninja y el compilador oficial glslangValidator de forma global en Linux
@@ -66,7 +66,7 @@ jobs:
           # Convertir el archivo temporal en un array C usando xxd
           xxd -i temp.spv > "$output_h"
           
-          # 🚨 PROTECCIÓN DE SHADERS: Cambiamos a 'const unsigned char' manteniendo el tamaño de byte real (uint8_t).
+          # PROTECCIÓN DE SHADERS: Cambiamos a 'const unsigned char' manteniendo el tamaño de byte real (uint8_t).
           # Esto evita corrupciones en el bytecode de SPIR-V, garantizando que los shaders carguen estables en tu GPU Mali.
           sed -i "s/unsigned char temp_spv/const unsigned char ${var_name}/g" "$output_h"
           sed -i "s/unsigned int temp_spv_len/const unsigned int ${var_name}_len/g" "$output_h"
