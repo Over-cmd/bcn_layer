@@ -50,15 +50,18 @@ OUTPUT := libbcn_layer.so
 
 all : $(OUTPUT)
 
-# CORRECCIÓN: Inyectamos temporalmente la extensión GL_GOOGLE_include_directive antes de compilar con glslangValidator
+# Inyecta la directiva de include de Google si falta y compila con glslangValidator
 src/%.spv : src/%.comp
 	@if ! grep -q "GL_GOOGLE_include_directive" $<; then \
 		sed -i '/#version/a \#extension GL_GOOGLE_include_directive : require' $<; \
 	fi
 	glslangValidator -V $< -o $@
 
+# Convierte el SPIR-V a cabecera C y limpia el prefijo de ruta para que coincida con bcn.cpp
 src/%_spv.h : src/%.spv
 	xxd -i $< > $@
+	sed -i 's/unsigned char src_/unsigned char /g' $@
+	sed -i 's/unsigned int src_/unsigned int /g' $@
 	
 $(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
