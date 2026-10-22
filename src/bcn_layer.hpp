@@ -39,6 +39,7 @@ typedef std::lock_guard<std::mutex> scoped_lock;
 struct device {
 	VkDevice handle;
 	VkPhysicalDevice physical;
+	VkInstance instance; // 👈 Añadido para resolver el despacho de memoria y evitar errores de compilación
 	VkPhysicalDeviceProperties2 props2;
 	VkPhysicalDeviceFeatures features;
 	VkPhysicalDeviceDriverProperties driverProps;
