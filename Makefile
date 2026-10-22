@@ -50,8 +50,11 @@ OUTPUT := libbcn_layer.so
 
 all : $(OUTPUT)
 
-# CORRECCIÓN: Usamos glslangValidator -V para compilar los shaders sin depender de glslc
+# CORRECCIÓN: Inyectamos temporalmente la extensión GL_GOOGLE_include_directive antes de compilar con glslangValidator
 src/%.spv : src/%.comp
+	@if ! grep -q "GL_GOOGLE_include_directive" $<; then \
+		sed -i '/#version/a \#extension GL_GOOGLE_include_directive : require' $<; \
+	fi
 	glslangValidator -V $< -o $@
 
 src/%_spv.h : src/%.spv
