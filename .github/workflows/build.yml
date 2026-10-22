@@ -35,29 +35,37 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 5. ORGANIZAR ESTRUCTURA, REENSAMBLAR PARTES E INYECTAR CAPA
+    # 5. ORGANIZAR, COPIAR Y REENSAMBLAR CON DEBUG EXplícito
     - name: Organizar estructura, reensamblar partes e inyectar capa
       run: |
+        set -e
         rm -rf pkg_root
-        mkdir -p pkg_root
-
-        # Copiar el contenido interno de extra_libs para que 'usr/' quede directamente en la raíz
-        if [ -d "extra_libs" ]; then
-          cp -r extra_libs/* pkg_root/
-        fi
-
-        # Reconstruir libGL.so.1.5.0 a partir de las partes subidas en extra_libs/usr/lib/
-        if ls pkg_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
-          echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
-          cat pkg_root/usr/lib/libGL.so.1.5.0.part* > pkg_root/usr/lib/libGL.so.1.5.0
-          rm pkg_root/usr/lib/libGL.so.1.5.0.part*
-          echo "¡libGL.so.1.5.0 reconstruido con éxito!"
-        fi
-
-        # Asegurar directorios de destino finales
         mkdir -p pkg_root/usr/lib
         mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
         mkdir -p pkg_root/usr/share/vulkan/icd.d
+
+        # Copiar de forma segura todo el contenido desde extra_libs si existe
+        if [ -d "extra_libs/usr" ]; then
+          cp -r extra_libs/usr/* pkg_root/usr/
+        elif [ -d "extra_libs" ]; then
+          cp -r extra_libs/* pkg_root/
+        fi
+
+        echo "--- Archivos detectados en usr/lib antes de unir ---"
+        ls -la pkg_root/usr/lib/
+
+        # Reconstruir libGL.so.1.5.0 a partir de las partes subidas
+        if [ -f "pkg_root/usr/lib/libGL.so.1.5.0.part1" ]; then
+          echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
+          cat pkg_root/usr/lib/libGL.so.1.5.0.part* > pkg_root/usr/lib/libGL.so.1.5.0
+          rm -f pkg_root/usr/lib/libGL.so.1.5.0.part*
+          echo "¡libGL.so.1.5.0 reconstruido con éxito!"
+        else
+          echo "Aviso: No se encontraron los archivos .part de libGL en pkg_root/usr/lib/"
+        fi
+
+        echo "--- Archivos detectados en usr/lib después de unir ---"
+        ls -la pkg_root/usr/lib/
 
         # Inyectar libbcn_layer.so recién compilado en usr/lib/
         if [ -f "libbcn_layer.so" ]; then
