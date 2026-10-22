@@ -11,6 +11,6 @@ struct fence {
 	std::vector<std::unique_ptr<struct buffer>> staging_buffers;
 };
 
-struct fence *get_fence(VkFence);
+struct fence *get_fence(VkFence fence);
 
 #endif
