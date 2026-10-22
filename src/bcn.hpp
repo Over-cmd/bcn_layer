@@ -1,73 +1,62 @@
-#ifndef BCN_LAYER_HPP
-#define BCN_LAYER_HPP
+#ifndef __BCN_LAYER_HPP
+#define __BCN_LAYER_HPP
 
-#define VK_NO_PROTOTYPES
-#include <vulkan/vulkan.h>
 #include "vulkan/vk_layer.h"
-
-#include <unordered_map>
-#include <memory>
-#include <mutex>
-#include <vector>
-#include <string>
-#include <cstring>
-#include <cstdlib>
-
+#include "vk_func.hpp"
 #include "logger.hpp"
 
-// Estructura de dispositivo extendida para soportar Mali-G52 y fallbacks
-struct device {
-    VkDevice handle;
-    VkPhysicalDevice physical;
-    VkInstance instance; // 👈 Campo de instancia necesario para el despacho y memoria
-    VkPhysicalDeviceProperties2 props2;
-    VkPhysicalDeviceDriverProperties driverProps;
-    VkPhysicalDeviceFeatures features;
-    bool compute_bcn_auto;
-    VkLayerDispatchTable table;
-    uint32_t memoryIndex;
-    VkQueue queue;
-    const VkAllocationCallbacks *alloc;
-    bool use_image_view;
-    std::vector<VkDescriptorPool> pools;
-    VkDescriptorSetLayout setLayout;
-    VkPipelineLayout layout;
-    VkPipeline s3tcPipeline;
-    VkPipeline bc7Pipeline;
-    VkPipeline bc6Pipeline;
-    VkPipeline rgtcPipeline;
-};
+#include <vulkan/vulkan.h>
+#include <unistd.h>
+#include <unordered_map>
+#include <mutex>
+#include <vector>
+#include <memory>
+#include <cstring>
 
-// Tablas globales y mapas de enlace de la capa Vulkan
 extern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
-extern std::unordered_map<void *, VkInstance> instanceMap;
-extern std::unordered_map<void *, VkPhysicalDeviceFeatures> featuresMap;
-extern std::unordered_map<void *, VkPhysicalDeviceProperties2> propertiesMap;
-extern std::unordered_map<void *, VkPhysicalDeviceDriverProperties> driverPropertiesMap;
-extern std::unordered_map<void *, std::shared_ptr<struct device>> deviceMap;
+
+#undef VK_LAYER_EXPORT
+#if defined(_WIN32) || defined(WIN32)
+#define VK_LAYER_EXPORT extern "C" __declspec(dllexport)
+#else
+#define VK_LAYER_EXPORT extern "C"
+#endif
+
+// Identificadores estándar de drivers para Vulkan / Mesa 25
+#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8                                  
+#define VK_DRIVER_ID_ARM_PROPRIETARY 9                                       
+#define VK_DRIVER_ID_MESA_TURNIP 18                                         
+#define VK_DRIVER_ID_SAMSUNG_PROPRIETARY 21
+
+template <typename T>
+void* GetKey(T item) {
+    return *(void**)item;
+}
 
 extern std::mutex global_lock;
-extern bool bcn_compute_auto;
+typedef std::lock_guard<std::mutex> scoped_lock;
 
-// Función auxiliar para obtener la clave genérica de un objeto Vulkan
-template <typename T>
-inline void *GetKey(T object) {
-    return (void *)object;
-}
+struct device {
+	VkDevice handle;
+	VkPhysicalDevice physical;
+	VkPhysicalDeviceProperties2 props2;
+	VkPhysicalDeviceFeatures features;
+	VkPhysicalDeviceDriverProperties driverProps;
+	bool compute_bcn_auto;
+	VkLayerDispatchTable table;
+	VkPipeline s3tcPipeline;
+	VkPipeline rgtcPipeline;
+	VkPipeline bc6Pipeline;
+	VkPipeline bc7Pipeline;
+	VkPipelineLayout layout;
+	VkQueue queue;
+	uint32_t memoryIndex;
+	int use_image_view;
+	VkDescriptorSetLayout setLayout;
+	std::vector<VkDescriptorPool> pools;
+	const VkAllocationCallbacks *alloc;
+};
 
 struct device *get_device(VkDevice device);
-
-// Prototipos de funciones exportadas por la capa Vulkan
-extern "C" {
-    VK_LAYER_EXPORT VkResult VKAPI_CALL BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkInstance *pInstance);
-    VK_LAYER_EXPORT void VKAPI_CALL BCnLayer_DestroyInstance(VkInstance instance, const VkAllocationCallbacks *pAllocator);
-    VK_LAYER_EXPORT VkResult VKAPI_CALL BCnLayer_EnumeratePhysicalDevices(VkInstance instance, uint32_t *pPhysicalDeviceCount, VkPhysicalDevice *pPhysicalDevices);
-    VK_LAYER_EXPORT void VKAPI_CALL BCnLayer_GetPhysicalDeviceFeatures(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures *pFeatures);
-    VK_LAYER_EXPORT void VKAPI_CALL BCnLayer_GetPhysicalDeviceFeatures2(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures2 *pFeatures);
-    VK_LAYER_EXPORT VkResult VKAPI_CALL BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDevice *pDevice);
-    VK_LAYER_EXPORT void VKAPI_CALL BCnLayer_DestroyDevice(VkDevice device, const VkAllocationCallbacks *pAllocator);
-    VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL BCnLayer_GetDeviceProcAddr(VkDevice device, const char *pName);
-    VK_LAYER_EXPORT PFN_vkVoidFunction VKAPI_CALL BCnLayer_GetInstanceProcAddr(VkInstance instance, const char *pName);
-}
 
 #endif
