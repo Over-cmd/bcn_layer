@@ -1,13 +1,6 @@
 #include "queue.hpp"
-
-// Declaración explícita para resolver el error de tipo incompleto y forward declaration
-struct command_buffer {
-    VkCommandBuffer handle;
-    struct device *device;
-    VkCommandPool pool;
-    struct fence *fence;
-};
-struct command_buffer *get_command_buffer(VkCommandBuffer commandbuffer);
+#include "command_buffer.hpp"
+#include "fence.hpp"
 
 std::unordered_map<VkQueue, std::shared_ptr<struct queue>> queuesMap;
 
@@ -51,7 +44,8 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	struct queue *q = get_queue(queue);
 	if (!q) {
-		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(queue));
+		// CORRECCIÓN MESA 25: Uso seguro de GetKey para el objeto dispatchable VkQueue
+		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(GetKey(queue)));
 		if (fallback_dev) {
 			return fallback_dev->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 		}
@@ -72,6 +66,3 @@ BCnLayer_QueueSubmit(VkQueue queue,
 
 	return q->device->table.QueueSubmit(queue, submitInfoCount, pSubmitInfos, fence);
 }
-
-
-
