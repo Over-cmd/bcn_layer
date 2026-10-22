@@ -35,46 +35,48 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 5. ORGANIZAR ESTRUCTURA LIMPIA Y EXPLÍCITA (GARANTIZANDO USR/ EN LA RAÍZ)
-    - name: Organizar estructura, reensamblar partes e inyectar capa
+    # 5. ORGANIZAR Y AGRUPAR TODOS LOS .SO Y JSON DIRECTAMENTE EN LA ESTRUCTURA USR
+    - name: Organizar estructura limpia y unificar librerías
       run: |
         set -e
-        # Limpiar cualquier resto anterior
-        rm -rf pkg_root extra_libs.tzst
+        rm -rf final_root extra_libs.tzst
 
-        # Crear la jerarquía exacta requerida por Winlator
-        mkdir -p pkg_root/usr/lib
-        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
-        mkdir -p pkg_root/usr/share/vulkan/icd.d
+        # Crear la estructura exacta con 'usr' en la raíz absoluta
+        mkdir -p final_root/usr/lib
+        mkdir -p final_root/usr/share/vulkan/icd.d
+        mkdir -p final_root/usr/share/vulkan/implicit_layer.d
 
-        # Copiar de forma explícita los archivos de librerías desde el repositorio
+        # Copiar librerías desde el repositorio si existen en extra_libs/usr/lib
         if [ -d "extra_libs/usr/lib" ]; then
-          cp -a extra_libs/usr/lib/* pkg_root/usr/lib/
+          cp -a extra_libs/usr/lib/* final_root/usr/lib/
         fi
 
-        # Copiar de forma explícita las carpetas de configuración de Vulkan (json)
-        if [ -d "extra_libs/usr/share/vulkan" ]; then
-          cp -a extra_libs/usr/share/vulkan/. pkg_root/usr/share/vulkan/
+        # Copiar archivos de configuración de Vulkan (ICD e Implicit Layers)
+        if [ -d "extra_libs/usr/share/vulkan/icd.d" ]; then
+          cp -a extra_libs/usr/share/vulkan/icd.d/* final_root/usr/share/vulkan/icd.d/
+        fi
+        if [ -d "extra_libs/usr/share/vulkan/implicit_layer.d" ]; then
+          cp -a extra_libs/usr/share/vulkan/implicit_layer.d/* final_root/usr/share/vulkan/implicit_layer.d/
         fi
 
-        echo "--- Archivos detectados en pkg_root/usr/lib antes de unir ---"
-        ls -la pkg_root/usr/lib/
+        echo "--- Archivos detectados en final_root/usr/lib antes de unir ---"
+        ls -la final_root/usr/lib/
 
-        # Reconstruir libGL.so.1.5.0 a partir de las partes subidas
-        if ls pkg_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
+        # Reconstruir libGL.so.1.5.0 a partir de las partes subidas (.part*)
+        if ls final_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
           echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
-          cat pkg_root/usr/lib/libGL.so.1.5.0.part* > pkg_root/usr/lib/libGL.so.1.5.0
-          rm -f pkg_root/usr/lib/libGL.so.1.5.0.part*
+          cat final_root/usr/lib/libGL.so.1.5.0.part* > final_root/usr/lib/libGL.so.1.5.0
+          rm -f final_root/usr/lib/libGL.so.1.5.0.part*
           echo "¡libGL.so.1.5.0 reconstruido con éxito!"
         fi
 
-        echo "--- Archivos detectados en pkg_root/usr/lib después de unir ---"
-        ls -la pkg_root/usr/lib/
+        echo "--- Archivos detectados en final_root/usr/lib después de unir ---"
+        ls -la final_root/usr/lib/
 
-        # Inyectar libbcn_layer.so recién compilado en usr/lib/
+        # Inyectar libbcn_layer.so recién compilado dentro de usr/lib/
         if [ -f "libbcn_layer.so" ]; then
-          cp libbcn_layer.so pkg_root/usr/lib/
-          echo "¡Éxito! libbcn_layer.so añadido a pkg_root/usr/lib/."
+          cp libbcn_layer.so final_root/usr/lib/
+          echo "¡Éxito! libbcn_layer.so añadido a final_root/usr/lib/."
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
@@ -82,15 +84,15 @@ jobs:
 
         # Copiar o generar el manifiesto JSON de la capa
         if [ -f "libbcn_layer.json" ]; then
-          cp libbcn_layer.json pkg_root/usr/share/vulkan/implicit_layer.d/
+          cp libbcn_layer.json final_root/usr/share/vulkan/implicit_layer.d/
         else
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
+          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > final_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. EMPAQUETAR TODO EN extra_libs.tzst (Con usr/ directamente en la raíz)
+    # 6. EMPAQUETAR DIRECTAMENTE DESDE LA RAÍZ DE final_root
     - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -I zstd -cf extra_libs.tzst -C pkg_root .
+        tar -I zstd -cf extra_libs.tzst -C final_root .
 
     # 7. SUBIR ARTEFACTO FINAL
     - name: Subir artefacto final
