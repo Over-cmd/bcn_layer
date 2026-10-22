@@ -47,17 +47,26 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 6. Organizar, fusionar extra_libs y la capa compilada
+    # 6. Organizar y asegurar que usr/ quede directamente en la raíz
     - name: Fusionar extra_libs y Compilación en pkg_root
       run: |
+        mkdir -p pkg_root
+
+        # Copiar contenido de extra_libs si existe
+        if [ -d "extra_libs" ]; then
+          cp -r extra_libs/* pkg_root/
+        fi
+
+        # Limpiar cualquier carpeta extra que se haya colado antes de usr (aplanar estructura si es necesario)
+        if [ -d "pkg_root/extra_libs/usr" ]; then
+          cp -r pkg_root/extra_libs/usr/* pkg_root/usr/ 2>/dev/null || true
+          rm -rf pkg_root/extra_libs
+        fi
+
+        # Asegurar directorios de destino finales
         mkdir -p pkg_root/usr/lib
         mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
         mkdir -p pkg_root/usr/share/vulkan/icd.d
-
-        # Copiar todo el contenido de extra_libs (incluyendo el libGL ya reconstruido y demás binarios)
-        if [ -d "extra_libs" ]; then
-          cp -r extra_libs/* pkg_root/ || true
-        fi
 
         # Verificar y añadir libbcn_layer.so recién compilado
         if [ -f "libbcn_layer.so" ]; then
