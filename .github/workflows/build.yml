@@ -1,4 +1,4 @@
-name: Compilar Layer con Makefile Nativo y Extra Libs
+name: Compilar Bcn Layer Nativo
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Instalar dependencias globales (incluyendo 'file' para detectar tipos de archivo)
+    # 2. Instalar dependencias globales de compilación
     - name: Instalar Herramientas de Compilación y SDK de Vulkan
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev file unzip
+        sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev
 
-    # 3. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp
+    # 3. Aplicar Parche C++ en bcn_layer.hpp
     - name: Aplicar Parche de Enlace Externo a bcn_layer.hpp
       run: |
         if ! grep -q "extern std::unordered_map.*instanceDispatch" src/bcn_layer.hpp; then
@@ -30,68 +30,43 @@ jobs:
           echo "¡Parche aplicado con éxito en bcn_layer.hpp!"
         fi
 
-    # 4. COMPILACIÓN USANDO TU MAKEFILE
+    # 4. Compilar el proyecto con Make
     - name: Compilar Proyecto con Make
       run: |
         make -j$(nproc)
 
-    # 5. BÚSQUEDA, UNIÓN Y EXTRACCIÓN AUTOMÁTICA DE PARTES ZIP
-    - name: Buscar, unir, extraer y organizar archivos
+    # 5. Organizar la estructura exacta (usr/lib y usr/share/vulkan/implicit_layer.d)
+    - name: Organizar estructura de carpetas en pkg_root
       run: |
         set -e
-        rm -rf final_root extra_libs.tzst
-        mkdir -p final_root/usr/lib
-        mkdir -p final_root/usr/share/vulkan/icd.d
-        mkdir -p final_root/usr/share/vulkan/implicit_layer.d
+        rm -rf pkg_root extra_libs.tzst
+        
+        mkdir -p pkg_root/usr/lib
+        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
 
-        echo "=== Buscando todos los archivos .so y fragmentos (.part*) en el repositorio ==="
-        find . -type f \( -name "*.so*" -o -name "*.part*" \) ! -path "./.git*" ! -path "./final_root*" -exec cp -v {} final_root/usr/lib/ \;
-
-        # Reconstruir el archivo a partir de las partes si existen
-        if ls final_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
-          echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
-          cat final_root/usr/lib/libGL.so.1.5.0.part* > final_root/usr/lib/libGL.so.1.5.0
-          rm -f final_root/usr/lib/libGL.so.1.5.0.part*
-          echo "¡Partes unidas con éxito!"
-        fi
-
-        # Si el archivo resultante es un ZIP, descomprimirlo para obtener la librería real
-        if file final_root/usr/lib/libGL.so.1.5.0 | grep -q "Zip archive"; then
-          echo "Detectado que libGL.so.1.5.0 es un archivo ZIP. Descomprimiendo..."
-          unzip -o final_root/usr/lib/libGL.so.1.5.0 -d final_root/usr/lib/
-          rm -f final_root/usr/lib/libGL.so.1.5.0
-          echo "¡Librería extraída del ZIP correctamente!"
-        fi
-
-        # Inyectar la capa recién compilada libbcn_layer.so
+        # Copilar / Mover libbcn_layer.so a su ruta definitiva
         if [ -f "libbcn_layer.so" ]; then
-          cp -v libbcn_layer.so final_root/usr/lib/
-          echo "¡libbcn_layer.so inyectado con éxito!"
+          cp -v libbcn_layer.so pkg_root/usr/lib/
+          echo "¡Éxito! libbcn_layer.so añadido a usr/lib/."
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
         fi
 
-        echo "=== Buscando y organizando archivos .json de Vulkan ==="
-        find . -type f -name "*.json" ! -path "./.git*" ! -path "./final_root*" | while read json_file; do
-          if echo "$json_file" | grep -qi "icd"; then
-            cp -v "$json_file" final_root/usr/share/vulkan/icd.d/
-          else
-            cp -v "$json_file" final_root/usr/share/vulkan/implicit_layer.d/
-          fi
-        done
-
-        # Asegurar manifiesto JSON de bcn_layer por defecto si faltase
-        if [ ! -f "final_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json" ]; then
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > final_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
+        # Copiar o generar el manifiesto JSON de la capa
+        if [ -f "libbcn_layer.json" ]; then
+          cp -v libbcn_layer.json pkg_root/usr/share/vulkan/implicit_layer.d/
+        else
+          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
+          echo "Manifiesto JSON generado automáticamente."
         fi
 
-    # 6. EMPAQUETAR EN extra_libs.tzst MANTENIENDO LA EXTENSIÓN ORIGINAL
+    # 6. Empaquetar limpio en extra_libs.tzst
     - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -I zstd -cf extra_libs.tzst -C final_root .
+        tar -I zstd -cf extra_libs.tzst -C pkg_root .
 
-    # 7. SUBIR ARTEFACTO FINAL
+    # 7. Subir artefacto final
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
