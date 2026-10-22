@@ -26,7 +26,7 @@ create_staging_buffer(struct device *dev, int size)
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create staging buffer, res %d", result);
-		return NULL;
+		return nullptr;
 	}
 
 	VkMemoryAllocateInfo allocate_info = {
@@ -38,13 +38,14 @@ create_staging_buffer(struct device *dev, int size)
 
 	result = table.AllocateMemory(device, &allocate_info, nullptr, &memory);
 	
-	// PARCHE MALI-G52: Fallback si la memoria por defecto falla debido a alineaciones estrictas de Unisoc
+	// PARCHE MALI-G52: Fallback si la memoria por defecto falla debido a alineaciones estrictas
 	if (result != VK_SUCCESS && dev->table.GetBufferMemoryRequirements != nullptr) {
 		VkMemoryRequirements memReqs;
 		dev->table.GetBufferMemoryRequirements(device, buffer, &memReqs);
 		
 		VkPhysicalDeviceMemoryProperties memProps;
-		instanceDispatch[GetKey(dev->physical)].GetPhysicalDeviceMemoryProperties(dev->physical, &memProps);
+		// CORRECCIÓN: Usamos dev->instance en lugar de dev->physical para indexar correctamente instanceDispatch
+		instanceDispatch[GetKey(dev->instance)].GetPhysicalDeviceMemoryProperties(dev->physical, &memProps);
 		
 		uint32_t fallbackIndex = UINT32_MAX;
 		for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
@@ -64,7 +65,7 @@ create_staging_buffer(struct device *dev, int size)
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to allocate staging buffer memory, res %d", result);
 		table.DestroyBuffer(device, buffer, nullptr);
-		return NULL;
+		return nullptr;
 	}
 
 	result = table.BindBufferMemory(device, buffer, memory, 0);
@@ -72,7 +73,7 @@ create_staging_buffer(struct device *dev, int size)
 		Logger::log("error", "Failed to bind staging buffer memory, res %d", result);
 		table.FreeMemory(device, memory, nullptr);
 		table.DestroyBuffer(device, buffer, nullptr);
-		return NULL;
+		return nullptr;
 	}
 
 	auto staging_buf = std::make_unique<struct buffer>();
