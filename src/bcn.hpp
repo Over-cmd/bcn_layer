@@ -1,62 +1,33 @@
-#ifndef __BCN_LAYER_HPP
-#define __BCN_LAYER_HPP
+#ifndef __BCN_HPP
+#define __BCN_HPP
 
-#include "vulkan/vk_layer.h"
-#include "vk_func.hpp"
-#include "logger.hpp"
+#include "bcn_layer.hpp"
 
-#include <vulkan/vulkan.h>
-#include <unistd.h>
-#include <unordered_map>
-#include <mutex>
-#include <vector>
-#include <memory>
-#include <cstring>
-
-extern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
-
-#undef VK_LAYER_EXPORT
-#if defined(_WIN32) || defined(WIN32)
-#define VK_LAYER_EXPORT extern "C" __declspec(dllexport)
-#else
-#define VK_LAYER_EXPORT extern "C"
-#endif
-
-// Identificadores estándar de drivers para Vulkan / Mesa 25
-#define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8                                  
-#define VK_DRIVER_ID_ARM_PROPRIETARY 9                                       
-#define VK_DRIVER_ID_MESA_TURNIP 18                                         
-#define VK_DRIVER_ID_SAMSUNG_PROPRIETARY 21
-
-template <typename T>
-void* GetKey(T item) {
-    return *(void**)item;
-}
-
-extern std::mutex global_lock;
-typedef std::lock_guard<std::mutex> scoped_lock;
-
-struct device {
-	VkDevice handle;
-	VkPhysicalDevice physical;
-	VkPhysicalDeviceProperties2 props2;
-	VkPhysicalDeviceFeatures features;
-	VkPhysicalDeviceDriverProperties driverProps;
-	bool compute_bcn_auto;
-	VkLayerDispatchTable table;
-	VkPipeline s3tcPipeline;
-	VkPipeline rgtcPipeline;
-	VkPipeline bc6Pipeline;
-	VkPipeline bc7Pipeline;
-	VkPipelineLayout layout;
-	VkQueue queue;
-	uint32_t memoryIndex;
+struct push_constants {
+	int format;
+	int width;
+	int height;
+	int offset;	
+	int bufferRowLength;
+	int offsetX;
+	int offsetY;
 	int use_image_view;
-	VkDescriptorSetLayout setLayout;
-	std::vector<VkDescriptorPool> pools;
-	const VkAllocationCallbacks *alloc;
 };
 
-struct device *get_device(VkDevice device);
+bool is_s3tc(VkFormat format);
+bool is_rgtc(VkFormat format);
+bool is_bc6(VkFormat format);
+bool is_bc7(VkFormat format);
+bool is_supported_bcn_format(struct device *device, VkFormat format);
+VkFormat get_format_for_bcn(VkFormat format);
+VkResult create_bcn_compute_pipelines(struct device *dev);
+VkResult decompress_bcn_compute(struct device *dev,
+                       			VkCommandBuffer commandbuffer,
+                       			VkFormat format,
+                       			VkBufferImageCopy *copy_region,
+                       			struct buffer *srcBuffer,
+                       			struct buffer *stagingBuffer,
+                       			struct image *dstImage,
+                       			VkImageLayout dstImageLayout);
 
 #endif
