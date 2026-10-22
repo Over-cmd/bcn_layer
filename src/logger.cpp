@@ -1,6 +1,10 @@
 #include "logger.hpp"
 #include <vector>
 #include <cstring>
+#include <iostream>
+#include <cstdlib>
+#include <cstdarg>
+#include <string>
 
 namespace Logger {
 	static struct bcn_layer_log bcn_layer_log_options[] = {
@@ -33,7 +37,7 @@ namespace Logger {
 		return false;
 	}
 	
-	void log (const std::string& log_level, const char *format, ...) {
+	void log(const std::string& log_level, const char *format, ...) {
 		if (!get_bcn_layer_log_level(log_level.c_str()))
 			return;
 			
@@ -64,4 +68,3 @@ namespace Logger {
 		}
 	}
 }
-
