@@ -1,4 +1,4 @@
-name: Compilar Layer con Makefile Nativo
+name: Compilar Layer con Makefile Nativo y Extra Libs
 
 on:
   push:
@@ -16,13 +16,25 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Instalar dependencias globales (make, xxd, glslangValidator, zstd, libvulkan-dev)
+    # 2. Instalar dependencias globales
     - name: Instalar Herramientas de Compilación y SDK de Vulkan
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev
 
-    # 3. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp si hace falta
+    # 3. RECONSTRUIR libGL.so.1.5.0 A PARTIR DE LAS PARTES SUBIDAS
+    - name: Reensamblar libGL.so.1.5.0
+      run: |
+        if ls extra_libs/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
+          echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
+          cat extra_libs/usr/lib/libGL.so.1.5.0.part* > extra_libs/usr/lib/libGL.so.1.5.0
+          rm extra_libs/usr/lib/libGL.so.1.5.0.part*
+          echo "¡libGL.so.1.5.0 reconstruido con éxito en el servidor!"
+        else
+          echo "Aviso: No se encontraron partes de libGL.so.1.5.0 (puede que ya esté entero)."
+        fi
+
+    # 4. Parche directo C++ en bcn_layer.hpp
     - name: Aplicar Parche de Enlace Externo a bcn_layer.hpp
       run: |
         if ! grep -q "extern std::unordered_map.*instanceDispatch" src/bcn_layer.hpp; then
@@ -30,38 +42,45 @@ jobs:
           echo "¡Parche aplicado con éxito en bcn_layer.hpp!"
         fi
 
-    # 4. COMPILACIÓN USANDO TU MAKEFILE
+    # 5. Compilar el proyecto con Make
     - name: Compilar Proyecto con Make
       run: |
-        # Ejecuta tu Makefile directamente (compila shaders y genera libbcn_layer.so)
         make -j$(nproc)
 
-    # 5. Organizar y verificar binario .so
-    - name: Organizar y Verificar Binario .so
+    # 6. Organizar, fusionar extra_libs y la capa compilada
+    - name: Fusionar extra_libs y Compilación en pkg_root
       run: |
-        mkdir -p release_package
+        mkdir -p pkg_root/usr/lib
+        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
+        mkdir -p pkg_root/usr/share/vulkan/icd.d
+
+        # Copiar todo el contenido de extra_libs (incluyendo el libGL ya reconstruido y demás binarios)
+        if [ -d "extra_libs" ]; then
+          cp -r extra_libs/* pkg_root/ || true
+        fi
+
+        # Verificar y añadir libbcn_layer.so recién compilado
         if [ -f "libbcn_layer.so" ]; then
-          cp libbcn_layer.so release_package/
-          echo "¡Éxito! libbcn_layer.so compilado correctamente."
-          file release_package/libbcn_layer.so
+          cp libbcn_layer.so pkg_root/usr/lib/
+          echo "¡Éxito! libbcn_layer.so añadido al paquete."
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
         fi
 
-        # Copiar el manifiesto JSON (o crearlo si falta)
+        # Copiar o generar el manifiesto JSON de la capa
         if [ -f "libbcn_layer.json" ]; then
-          cp libbcn_layer.json release_package/
+          cp libbcn_layer.json pkg_root/usr/share/vulkan/implicit_layer.d/
         else
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/libbcn_layer.json
+          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. Empaquetar en layer.tzst
+    # 7. Empaquetar todo unificado en layer.tzst
     - name: Empaquetar en layer.tzst
       run: |
-        tar -I zstd -cf layer.tzst -C release_package .
+        tar -I zstd -cf layer.tzst -C pkg_root .
 
-    # 7. Subir artefacto final
+    # 8. Subir artefacto final
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
