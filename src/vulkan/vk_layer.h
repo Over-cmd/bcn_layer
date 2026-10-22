@@ -1,10 +1,7 @@
-//
-// File: vk_layer.h
-//
 /*
- * Copyright (c) 2015-2016 The Khronos Group Inc.
- * Copyright (c) 2015-2016 Valve Corporation
- * Copyright (c) 2015-2016 LunarG, Inc.
+ * Copyright (c) 2015-2024 The Khronos Group Inc.
+ * Copyright (c) 2015-2024 Valve Corporation
+ * Copyright (c) 2015-2024 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +15,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
+ * Optimized for Mesa 25 / ARM Mali / Generic Vulkan Layers
  */
 
-/* Need to define dispatch table
- * Core struct can then have ptr to dispatch table at the top
- * Along with object ptrs for current and next OBJ
- */
-#pragma once
+#ifndef VK_LAYER_H
+#define VK_LAYER_H
 
 #include <vulkan/vulkan.h>
 
@@ -32,8 +27,14 @@
 #define VK_LAYER_EXPORT __attribute__((visibility("default")))
 #elif defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590)
 #define VK_LAYER_EXPORT __attribute__((visibility("default")))
+#elif defined(_WIN32)
+#define VK_LAYER_EXPORT __declspec(dllexport)
 #else
 #define VK_LAYER_EXPORT
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 typedef struct VkLayerDispatchTable_ {
@@ -159,17 +160,15 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdNextSubpass CmdNextSubpass;
     PFN_vkCmdEndRenderPass CmdEndRenderPass;
     PFN_vkCmdExecuteCommands CmdExecuteCommands;
+    
+    /* Extensiones KHR Swapchain & Sync */
     PFN_vkCreateSwapchainKHR CreateSwapchainKHR;
     PFN_vkDestroySwapchainKHR DestroySwapchainKHR;
     PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR;
     PFN_vkAcquireNextImageKHR AcquireNextImageKHR;
     PFN_vkQueuePresentKHR QueuePresentKHR;
-    PFN_vkCmdDrawIndirectCountAMD CmdDrawIndirectCountAMD;
-    PFN_vkCmdDrawIndexedIndirectCountAMD CmdDrawIndexedIndirectCountAMD;
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-    PFN_vkGetMemoryWin32HandleNV GetMemoryWin32HandleNV;
-#endif
-    PFN_vkCreateSharedSwapchainsKHR CreateSharedSwapchainsKHR;
+
+    /* Debug Marker / Utilities */
     PFN_vkDebugMarkerSetObjectTagEXT DebugMarkerSetObjectTagEXT;
     PFN_vkDebugMarkerSetObjectNameEXT DebugMarkerSetObjectNameEXT;
     PFN_vkCmdDebugMarkerBeginEXT CmdDebugMarkerBeginEXT;
@@ -183,84 +182,58 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
     PFN_vkGetPhysicalDeviceFeatures GetPhysicalDeviceFeatures;
     PFN_vkGetPhysicalDeviceFeatures2 GetPhysicalDeviceFeatures2;
-    PFN_vkGetPhysicalDeviceImageFormatProperties
-        GetPhysicalDeviceImageFormatProperties;
-    PFN_vkGetPhysicalDeviceImageFormatProperties2
-    	GetPhysicalDeviceImageFormatProperties2;     
+    PFN_vkGetPhysicalDeviceImageFormatProperties GetPhysicalDeviceImageFormatProperties;
+    PFN_vkGetPhysicalDeviceImageFormatProperties2 GetPhysicalDeviceImageFormatProperties2;     
     PFN_vkGetPhysicalDeviceFormatProperties GetPhysicalDeviceFormatProperties;
-    PFN_vkGetPhysicalDeviceSparseImageFormatProperties
-        GetPhysicalDeviceSparseImageFormatProperties;
+    PFN_vkGetPhysicalDeviceFormatProperties2 GetPhysicalDeviceFormatProperties2;
+    PFN_vkGetPhysicalDeviceSparseImageFormatProperties GetPhysicalDeviceSparseImageFormatProperties;
     PFN_vkGetPhysicalDeviceProperties GetPhysicalDeviceProperties;
     PFN_vkGetPhysicalDeviceProperties2 GetPhysicalDeviceProperties2;
-    PFN_vkGetPhysicalDeviceQueueFamilyProperties
-        GetPhysicalDeviceQueueFamilyProperties;
+    PFN_vkGetPhysicalDeviceQueueFamilyProperties GetPhysicalDeviceQueueFamilyProperties;
     PFN_vkGetPhysicalDeviceMemoryProperties GetPhysicalDeviceMemoryProperties;
+    PFN_vkGetPhysicalDeviceMemoryProperties2 GetPhysicalDeviceMemoryProperties2;
     PFN_vkEnumerateDeviceExtensionProperties EnumerateDeviceExtensionProperties;
     PFN_vkEnumerateDeviceLayerProperties EnumerateDeviceLayerProperties;
     PFN_vkDestroySurfaceKHR DestroySurfaceKHR;
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR GetPhysicalDeviceSurfaceSupportKHR;
-    PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR
-        GetPhysicalDeviceSurfaceCapabilitiesKHR;
+    PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR GetPhysicalDeviceSurfaceCapabilitiesKHR;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR GetPhysicalDeviceSurfaceFormatsKHR;
-    PFN_vkGetPhysicalDeviceSurfacePresentModesKHR
-        GetPhysicalDeviceSurfacePresentModesKHR;
+    PFN_vkGetPhysicalDeviceSurfacePresentModesKHR GetPhysicalDeviceSurfacePresentModesKHR;
     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT;
     PFN_vkDestroyDebugReportCallbackEXT DestroyDebugReportCallbackEXT;
     PFN_vkDebugReportMessageEXT DebugReportMessageEXT;
-#ifdef VK_USE_PLATFORM_MIR_KHR
-    PFN_vkCreateMirSurfaceKHR CreateMirSurfaceKHR;
-    PFN_vkGetPhysicalDeviceMirPresentationSupportKHR
-        GetPhysicalDeviceMirPresentationSupportKHR;
-#endif
+
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
     PFN_vkCreateWaylandSurfaceKHR CreateWaylandSurfaceKHR;
-    PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR
-        GetPhysicalDeviceWaylandPresentationSupportKHR;
+    PFN_vkGetPhysicalDeviceWaylandPresentationSupportKHR GetPhysicalDeviceWaylandPresentationSupportKHR;
 #endif
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     PFN_vkCreateWin32SurfaceKHR CreateWin32SurfaceKHR;
-    PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR
-        GetPhysicalDeviceWin32PresentationSupportKHR;
+    PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR GetPhysicalDeviceWin32PresentationSupportKHR;
 #endif
 #ifdef VK_USE_PLATFORM_XCB_KHR
     PFN_vkCreateXcbSurfaceKHR CreateXcbSurfaceKHR;
-    PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR
-        GetPhysicalDeviceXcbPresentationSupportKHR;
+    PFN_vkGetPhysicalDeviceXcbPresentationSupportKHR GetPhysicalDeviceXcbPresentationSupportKHR;
 #endif
 #ifdef VK_USE_PLATFORM_XLIB_KHR
     PFN_vkCreateXlibSurfaceKHR CreateXlibSurfaceKHR;
-    PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR
-        GetPhysicalDeviceXlibPresentationSupportKHR;
+    PFN_vkGetPhysicalDeviceXlibPresentationSupportKHR GetPhysicalDeviceXlibPresentationSupportKHR;
 #endif
 #ifdef VK_USE_PLATFORM_ANDROID_KHR
     PFN_vkCreateAndroidSurfaceKHR CreateAndroidSurfaceKHR;
 #endif
-    PFN_vkGetPhysicalDeviceDisplayPropertiesKHR
-        GetPhysicalDeviceDisplayPropertiesKHR;
-    PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR
-        GetPhysicalDeviceDisplayPlanePropertiesKHR;
-    PFN_vkGetDisplayPlaneSupportedDisplaysKHR
-        GetDisplayPlaneSupportedDisplaysKHR;
-    PFN_vkGetDisplayModePropertiesKHR
-        GetDisplayModePropertiesKHR;
-    PFN_vkCreateDisplayModeKHR
-        CreateDisplayModeKHR;
-    PFN_vkGetDisplayPlaneCapabilitiesKHR
-        GetDisplayPlaneCapabilitiesKHR;
-    PFN_vkCreateDisplayPlaneSurfaceKHR
-        CreateDisplayPlaneSurfaceKHR;
-    PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV
-        GetPhysicalDeviceExternalImageFormatPropertiesNV;
+    PFN_vkGetPhysicalDeviceDisplayPropertiesKHR GetPhysicalDeviceDisplayPropertiesKHR;
+    PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR GetPhysicalDeviceDisplayPlanePropertiesKHR;
+    PFN_vkGetDisplayPlaneSupportedDisplaysKHR GetDisplayPlaneSupportedDisplaysKHR;
+    PFN_vkGetDisplayModePropertiesKHR GetDisplayModePropertiesKHR;
+    PFN_vkCreateDisplayModeKHR CreateDisplayModeKHR;
+    PFN_vkGetDisplayPlaneCapabilitiesKHR GetDisplayPlaneCapabilitiesKHR;
+    PFN_vkCreateDisplayPlaneSurfaceKHR CreateDisplayPlaneSurfaceKHR;
 } VkLayerInstanceDispatchTable;
 
 // ------------------------------------------------------------------------------------------------
-// CreateInstance and CreateDevice support structures
+// Estructuras de soporte para CreateInstance y CreateDevice (Vulkan Loader Specification)
 
-/* Sub type of structure for instance and device loader ext of CreateInfo.
- * When sType == VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
- * or sType == VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO
- * then VkLayerFunction indicates struct type pointed to by pNext
- */
 typedef enum VkLayerFunction_ {
     VK_LAYER_LINK_INFO = 0,
     VK_LOADER_DATA_CALLBACK = 1
@@ -271,22 +244,13 @@ typedef struct VkLayerInstanceLink_ {
     PFN_vkGetInstanceProcAddr pfnNextGetInstanceProcAddr;
 } VkLayerInstanceLink;
 
-/*
- * When creating the device chain the loader needs to pass
- * down information about it's device structure needed at
- * the end of the chain. Passing the data via the
- * VkLayerDeviceInfo avoids issues with finding the
- * exact instance being used.
- */
 typedef struct VkLayerDeviceInfo_ {
     void *device_info;
     PFN_vkGetInstanceProcAddr pfnNextGetInstanceProcAddr;
 } VkLayerDeviceInfo;
 
-typedef VkResult (VKAPI_PTR *PFN_vkSetInstanceLoaderData)(VkInstance instance,
-        void *object);
-typedef VkResult (VKAPI_PTR *PFN_vkSetDeviceLoaderData)(VkDevice device,
-        void *object);
+typedef VkResult (VKAPI_PTR *PFN_vkSetInstanceLoaderData)(VkInstance instance, void *object);
+typedef VkResult (VKAPI_PTR *PFN_vkSetDeviceLoaderData)(VkDevice device, void *object);
 
 typedef struct {
     VkStructureType sType; // VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
@@ -313,3 +277,9 @@ typedef struct {
         PFN_vkSetDeviceLoaderData pfnSetDeviceLoaderData;
     } u;
 } VkLayerDeviceCreateInfo;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // VK_LAYER_H
