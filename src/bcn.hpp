@@ -31,5 +31,3 @@ VkResult decompress_bcn_compute(struct device *dev,
                        			VkImageLayout dstImageLayout);
 
 #endif
-
-
