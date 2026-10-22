@@ -47,37 +47,32 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 6. Organizar y asegurar que usr/ quede directamente en la raíz
-    - name: Fusionar extra_libs y Compilación en pkg_root
+    # 6. Organizar la estructura exacta (asegurando que usr/ esté limpio y en la raíz)
+    - name: Organizar estructura de carpetas en pkg_root
       run: |
+        rm -rf pkg_root
         mkdir -p pkg_root
 
-        # Copiar contenido de extra_libs si existe
+        # Copiar directamente el contenido interno de extra_libs si existe
         if [ -d "extra_libs" ]; then
           cp -r extra_libs/* pkg_root/
         fi
 
-        # Limpiar cualquier carpeta extra que se haya colado antes de usr (aplanar estructura si es necesario)
-        if [ -d "pkg_root/extra_libs/usr" ]; then
-          cp -r pkg_root/extra_libs/usr/* pkg_root/usr/ 2>/dev/null || true
-          rm -rf pkg_root/extra_libs
-        fi
-
-        # Asegurar directorios de destino finales
+        # Asegurar la ruta de las carpetas de destino finales para la capa
         mkdir -p pkg_root/usr/lib
         mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
         mkdir -p pkg_root/usr/share/vulkan/icd.d
 
-        # Verificar y añadir libbcn_layer.so recién compilado
+        # Verificar y añadir libbcn_layer.so recién compilado en su sitio exacto
         if [ -f "libbcn_layer.so" ]; then
           cp libbcn_layer.so pkg_root/usr/lib/
-          echo "¡Éxito! libbcn_layer.so añadido al paquete."
+          echo "¡Éxito! libbcn_layer.so añadido a usr/lib/."
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
         fi
 
-        # Copiar o generar el manifiesto JSON de la capa
+        # Copiar o generar el manifiesto JSON de la capa en su sitio exacto
         if [ -f "libbcn_layer.json" ]; then
           cp libbcn_layer.json pkg_root/usr/share/vulkan/implicit_layer.d/
         else
