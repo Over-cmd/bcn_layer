@@ -83,12 +83,10 @@ int extract_bits_reverse(uvec4 payload, int offset, int bits)
 	return result;
 }
 
-/* Taken from here https://jvm-gaming.org */
+/* Taken from here https://jvm-gaming.org - Optimizado para evitar desbordamientos en Mesa 25 / Mali */
 vec3 srgbDecode(vec3 color){
-	float r = color.r < 0.04045 ? (1.0 / 12.92) * color.r : pow((color.r + 0.055) * (1.0 / 1.055), 2.4);
-	float g = color.g < 0.04045 ? (1.0 / 12.92) * color.g : pow((color.g + 0.055) * (1.0 / 1.055), 2.4);
-	float b = color.b < 0.04045 ? (1.0 / 12.92) * color.b : pow((color.b + 0.055) * (1.0 / 1.055), 2.4);
-	return vec3(r, g, b);
+	vec3 linear_col = mix(color * (1.0 / 12.92), pow((color + 0.055) * (1.0 / 1.055), vec3(2.4)), greaterThan(color, vec3(0.04045)));
+	return linear_col;
 }
 
 #endif
