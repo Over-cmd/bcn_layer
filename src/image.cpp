@@ -4,6 +4,7 @@ std::unordered_map<VkImage, std::unique_ptr<struct image>> imagesMap;
 
 struct image *
 find_image(VkImage image) {
+	scoped_lock l(global_lock);
 	auto it = imagesMap.find(image);
 
 	if (it == imagesMap.end())
@@ -30,7 +31,7 @@ BCnLayer_CreateImage(VkDevice device,
 
 	if (is_supported_bcn_format(dev, pCreateInfo->format)) {
 	    create_info.format = get_format_for_bcn(pCreateInfo->format);
-	    // PARCHE MALI-G52: Aseguramos los bits de transferencia para evitar fallos de lectura/escritura en Vulkan 1.1
+	    // PARCHE MALI-G52: Aseguramos los bits de transferencia y almacenamiento para el Compute Shader
 	    create_info.usage |= VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	    create_info.flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
 	}
