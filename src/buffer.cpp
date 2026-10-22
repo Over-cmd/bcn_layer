@@ -1,4 +1,7 @@
 #include "buffer.hpp"
+#include "logger.hpp"
+#include "bcn_layer.hpp"
+#include <mutex>
 
 std::unordered_map<VkBuffer, std::unique_ptr<struct buffer>> buffersMap;
 
@@ -44,7 +47,6 @@ create_staging_buffer(struct device *dev, int size)
 		dev->table.GetBufferMemoryRequirements(device, buffer, &memReqs);
 		
 		VkPhysicalDeviceMemoryProperties memProps;
-		// CORRECCIÓN: Usamos dev->instance en lugar de dev->physical para indexar correctamente instanceDispatch
 		instanceDispatch[GetKey(dev->instance)].GetPhysicalDeviceMemoryProperties(dev->physical, &memProps);
 		
 		uint32_t fallbackIndex = UINT32_MAX;
