@@ -1,18 +1,18 @@
 {
-  "file_format_version" : "1.0.0",
+  "file_format_version" : "1.1.0",
   "layer" : {
     "name": "VK_LAYER_BCN_BCnLayer",
     "type": "GLOBAL",
     "library_path": "libbcn_layer.so",
-    "api_version": "1.0.0",
+    "api_version": "1.1.0",
     "implementation_version": "1",
-    "description": "BCn Decompression Layer",
+    "description": "BCn Decompression Layer for Mali-G52 / Mesa 25",
     "functions": {
       "vkGetInstanceProcAddr": "BCnLayer_GetInstanceProcAddr",
       "vkGetDeviceProcAddr": "BCnLayer_GetDeviceProcAddr"
     },
     "enable_environment": {
-      "ENABLE_BCN_COMPUTE": "1"
+      "BCN_COMPUTE_AUTO": "1"
     },
     "disable_environment": {
       "DISABLE_BCN_COMPUTE": "1"
