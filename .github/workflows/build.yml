@@ -35,18 +35,26 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 5. ORGANIZAR ESTRUCTURA LIMPIA (GARANTIZANDO QUE USR/ QUEDE EN LA RAÍZ)
+    # 5. ORGANIZAR ESTRUCTURA LIMPIA Y EXPLÍCITA (GARANTIZANDO USR/ EN LA RAÍZ)
     - name: Organizar estructura, reensamblar partes e inyectar capa
       run: |
         set -e
-        rm -rf pkg_root
-        mkdir -p pkg_root/usr
+        # Limpiar cualquier resto anterior
+        rm -rf pkg_root extra_libs.tzst
 
-        # Copiar exclusivamente el contenido interno de extra_libs/usr dentro de pkg_root/usr
-        if [ -d "extra_libs/usr" ]; then
-          cp -r extra_libs/usr/. pkg_root/usr/
-        elif [ -d "extra_libs" ]; then
-          cp -r extra_libs/. pkg_root/
+        # Crear la jerarquía exacta requerida por Winlator
+        mkdir -p pkg_root/usr/lib
+        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
+        mkdir -p pkg_root/usr/share/vulkan/icd.d
+
+        # Copiar de forma explícita los archivos de librerías desde el repositorio
+        if [ -d "extra_libs/usr/lib" ]; then
+          cp -a extra_libs/usr/lib/* pkg_root/usr/lib/
+        fi
+
+        # Copiar de forma explícita las carpetas de configuración de Vulkan (json)
+        if [ -d "extra_libs/usr/share/vulkan" ]; then
+          cp -a extra_libs/usr/share/vulkan/. pkg_root/usr/share/vulkan/
         fi
 
         echo "--- Archivos detectados en pkg_root/usr/lib antes de unir ---"
@@ -62,11 +70,6 @@ jobs:
 
         echo "--- Archivos detectados en pkg_root/usr/lib después de unir ---"
         ls -la pkg_root/usr/lib/
-
-        # Asegurar directorios de destino finales para la capa
-        mkdir -p pkg_root/usr/lib
-        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
-        mkdir -p pkg_root/usr/share/vulkan/icd.d
 
         # Inyectar libbcn_layer.so recién compilado en usr/lib/
         if [ -f "libbcn_layer.so" ]; then
