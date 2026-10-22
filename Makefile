@@ -4,7 +4,7 @@ LDFLAGS := -shared
 PREFIX := /usr
 JSON := libbcn_layer.json
 
-# Para Winlator Bionic, el contenedor emula x86_64 mediante Box64
+# Ruta optimizada para Winlator Bionic / Box64 (x86_64)
 INSTALL := $(PREFIX)/lib/x86_64-linux-gnu
 JSON_INSTALL := $(PREFIX)/share/vulkan/implicit_layer.d
 
@@ -50,8 +50,9 @@ OUTPUT := libbcn_layer.so
 
 all : $(OUTPUT)
 
+# CORRECCIÓN: Usamos glslangValidator -V para compilar los shaders sin depender de glslc
 src/%.spv : src/%.comp
-	glslc $< -o $@
+	glslangValidator -V $< -o $@
 
 src/%_spv.h : src/%.spv
 	xxd -i $< > $@
