@@ -3,6 +3,7 @@
 #include "vulkan/vk_layer.h"
 
 #include <unistd.h>
+#include <cmath>
 
 std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 std::unordered_map<void *, VkInstance> instanceMap;
@@ -495,6 +496,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
     auto device = std::make_shared<struct device>();
     device->handle = *pDevice;
     device->physical = physicalDevice;
+    device->instance = instance; // 👈 Asignación de instancia añadida para resolver el error en buffer.cpp
     device->props2 = propertiesMap[GetKey(physicalDevice)];
     device->driverProps = driverPropertiesMap[GetKey(physicalDevice)];
     device->features = featuresMap[GetKey(physicalDevice)];
