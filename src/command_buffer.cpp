@@ -84,7 +84,8 @@ BCnLayer_CmdCopyBufferToImage(VkCommandBuffer commandBuffer,
 
 	struct command_buffer *cb = get_command_buffer(commandBuffer);
 	if (!cb) {
-		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(commandBuffer));
+		// CORRECCIÓN MESA 25: Uso seguro de mapeo de dispatch a través del puntero de clave interno sin casts directos de tipo inseguros
+		struct device *fallback_dev = get_device(reinterpret_cast<VkDevice>(GetKey(commandBuffer)));
 		if (fallback_dev) {
 			fallback_dev->table.CmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
 		}
