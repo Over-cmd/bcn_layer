@@ -77,10 +77,14 @@ void main()
     int block_index = tile_coord.y * blocks_per_row + tile_coord.x;
     int bc_words = (format == VK_FORMAT_BC4_UNORM_BLOCK || format == VK_FORMAT_BC4_SNORM_BLOCK) ? 2 : 4;
     int block_offset = bc_words * block_index;
-    uvec4 payload = uvec4(uInput.data[block_offset],
-    					  uInput.data[block_offset + 1],
-    					  (bc_words > 2) ? uInput.data[block_offset + 2] : 0u,
-    					  (bc_words > 2) ? uInput.data[block_offset + 3] : 0u);
+
+    // CORRECCIÓN MESA 25 / MALI: Lecturas seguras separadas para evitar accesos fuera de rango en BC4
+    uint p0 = uInput.data[block_offset];
+    uint p1 = uInput.data[block_offset + 1];
+    uint p2 = (bc_words > 2) ? uInput.data[block_offset + 2] : 0u;
+    uint p3 = (bc_words > 2) ? uInput.data[block_offset + 3] : 0u;
+
+    uvec4 payload = uvec4(p0, p1, p2, p3);
     
     int linear_pixel = 4 * pixel_coord.y + pixel_coord.x;
 
