@@ -38,7 +38,7 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
 	VkLayerInstanceCreateInfo *layerCreateInfo = (VkLayerInstanceCreateInfo *)pCreateInfo->pNext;
 	VkResult result;
 	
-    while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO |
+    while (layerCreateInfo && (layerCreateInfo->sType != VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO ||
     						   layerCreateInfo->function != VK_LAYER_LINK_INFO)) 
     {
     	layerCreateInfo = (VkLayerInstanceCreateInfo *)layerCreateInfo->pNext;
@@ -47,7 +47,6 @@ BCnLayer_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
     if (!layerCreateInfo)
         return VK_ERROR_INITIALIZATION_FAILED;
 
-    
     PFN_vkGetInstanceProcAddr gip = layerCreateInfo->u.pLayerInfo->pfnNextGetInstanceProcAddr;
 	layerCreateInfo->u.pLayerInfo = layerCreateInfo->u.pLayerInfo->pNext;
 
@@ -106,7 +105,6 @@ BCnLayer_EnumeratePhysicalDevices(VkInstance instance,
 	scoped_lock l(global_lock);
 
 	VkResult result;
-
 	result = instanceDispatch[GetKey(instance)].EnumeratePhysicalDevices(instance, pPhysicalDeviceCount, pPhysicalDevices);
 
 	if (result != VK_SUCCESS || *pPhysicalDeviceCount < 1 || pPhysicalDevices == nullptr)
@@ -165,11 +163,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
 	
-	/* 🚨 EXCLUSIVO RESCATE MALI VÍDEO Y AUDIO:
-	   Si el buffer de la imagen se solicita con banderas de transferencia de destino o
-	   almacenamiento dinámico (típico de las cinemáticas dinámicas y el Swapchain), 
-	   rompemos la interceptación antes del switch. Esto hace que el frame pase en crudo 
-	   por software ultraligero, eliminando los tirones en los vídeos y estabilizando PulseAudio. */
 	if (usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) {
 		return instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceImageFormatProperties(physicalDevice,
 		       format, type, tiling, usage, flags, pImageFormatProperties);
@@ -194,7 +187,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   		    // PARCHE MALI-G52: Saltamos la restricción de descarte de drivers para forzar el uso de nuestros Shaders optimizados
    		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
    		    {
    		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
@@ -249,7 +241,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
       format, type, tiling, usage, flags, pImageFormatProperties);
 }
 
-
 VKAPI_ATTR VkResult VKAPI_CALL
 BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
                                                  const VkPhysicalDeviceImageFormatInfo2* pImageFormatInfo,
@@ -260,10 +251,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
 	VkPhysicalDeviceProperties2 props2 = propertiesMap[GetKey(physicalDevice)];
 	VkPhysicalDeviceDriverProperties driverProps = driverPropertiesMap[GetKey(physicalDevice)];
 	
-	/* 🚨 EXCLUSIVO RESCATE MALI VÍDEO Y AUDIO KHR2:
-	   Aplicamos el mismo escudo de desvío dinámico en la consulta estructurada para proteger 
-	   el Swapchain y las cinemáticas en los motores modernos. Si detectamos uso de transferencia 
-	   o almacenamiento de pantalla, dejamos pasar el frame en crudo de forma ultraligera. */
 	if (pImageFormatInfo->usage & (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) {
 		return instanceDispatch[GetKey(physicalDevice)].GetPhysicalDeviceImageFormatProperties2(physicalDevice,
 		       pImageFormatInfo, pImageFormatProperties);
@@ -288,7 +275,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   		    // PARCHE MALI-G52: Evitamos que el driver de ARM aborte la exposición del formato virtualizado
    		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
    		    {
    		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
@@ -343,7 +329,6 @@ BCnLayer_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice
       pImageFormatInfo, pImageFormatProperties);
 }
 
-
 VKAPI_ATTR void VKAPI_CALL
 BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
                                           VkFormat format,
@@ -376,7 +361,6 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
    		case VK_FORMAT_BC7_UNORM_BLOCK:
    		case VK_FORMAT_BC7_SRGB_BLOCK:
-   		    // PARCHE MALI-G52: Saltamos la restricción de descarte de drivers para forzar la exposición de características óptimas
    		    if (strstr(props2.properties.deviceName, "Mali-G52") == nullptr) 
    		    {
    		        if (bcn_compute_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 530, 0)) ||
@@ -392,7 +376,6 @@ BCnLayer_GetPhysicalDeviceFormatProperties(VkPhysicalDevice physicalDevice,
    			break;
    }
 }
-
 
 VK_LAYER_EXPORT VkResult VKAPI_CALL
 BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
@@ -410,7 +393,7 @@ BCnLayer_CreateDevice(VkPhysicalDevice physicalDevice,
 		layerCreateInfo = (VkLayerDeviceCreateInfo *)layerCreateInfo->pNext;
 	}
 
-	if (layerCreateInfo == NULL) {
+	if (layerCreateInfo == nullptr) {
 		return VK_ERROR_INITIALIZATION_FAILED;
 	}
 
@@ -588,7 +571,7 @@ BCnLayer_GetDeviceProcAddr(VkDevice device,
 		scoped_lock l(global_lock);
 		struct device *dev = get_device(device);
 		if (!dev)
-		    return NULL;
+		    return nullptr;
 
 		return dev->table.GetDeviceProcAddr(device, pName);
 	}
@@ -599,7 +582,7 @@ BCnLayer_GetInstanceProcAddr(VkInstance instance,
 							 const char *pName)
 {   
 	GETPROCADDR(CreateInstance);
-	GETPROCADDR(EnumeratePhysicalDevices)
+	GETPROCADDR(EnumeratePhysicalDevices);
 	GETPROCADDR(GetPhysicalDeviceFeatures);
 	GETPROCADDR(GetPhysicalDeviceFormatProperties);
 	GETPROCADDR(GetPhysicalDeviceImageFormatProperties);
