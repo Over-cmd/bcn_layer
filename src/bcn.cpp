@@ -26,7 +26,6 @@ bool is_s3tc(VkFormat format) {
 	}
 }
 
-
 bool is_rgtc(VkFormat format) {
 	switch (format) {
 		case VK_FORMAT_BC4_UNORM_BLOCK:
@@ -59,7 +58,6 @@ bool is_bc7(VkFormat format) {
 	}
 }
 
-
 VkFormat get_format_for_bcn(VkFormat format) {
 	switch (format) {
 		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
@@ -83,21 +81,19 @@ VkFormat get_format_for_bcn(VkFormat format) {
 	}
 }
 
-
 bool is_supported_bcn_format(struct device *device, VkFormat format) {
     VkPhysicalDeviceProperties2 props2 = device->props2;
     VkPhysicalDeviceDriverProperties driverProps = device->driverProps;
 
-    // PARCHE MALI-G52: Forzamos la decodificación por software (Compute Shaders) si es una GPU ARM Mali-G52
+    // PARCHE MALI-G52: Forzamos la decodificación por software (Compute Shaders) si es una GPU ARM Mali
     if (strstr(props2.properties.deviceName, "Mali-G52") != nullptr || 
         driverProps.driverID == VK_DRIVER_ID_ARM_PROPRIETARY) 
     {
-        // Retornamos true para indicar soporte a través de nuestros Shaders modificados, saltándonos restricciones
         return is_rgtc(format) || is_s3tc(format) || is_bc6(format) || is_bc7(format);
     }
 
     if (device->compute_bcn_auto && ((driverProps.driverID == VK_DRIVER_ID_QUALCOMM_PROPRIETARY && props2.properties.driverVersion > VK_MAKE_VERSION(512, 502, 0)) ||
-                                               driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
+                                     driverProps.driverID == VK_DRIVER_ID_MESA_TURNIP)) 
     {
     	return false;
     }
@@ -109,7 +105,6 @@ bool is_supported_bcn_format(struct device *device, VkFormat format) {
     
 	return is_rgtc(format) || is_s3tc(format) || is_bc6(format) || is_bc7(format);
 }
-
 
 static VkResult 
 create_new_pool(struct device *device) {
@@ -138,8 +133,7 @@ create_new_pool(struct device *device) {
 	};
 	
 	VkDescriptorPool descriptorPool;
-	result = table.CreateDescriptorPool(device->handle,
-		&descpool_info, NULL, &descriptorPool);
+	result = table.CreateDescriptorPool(device->handle, &descpool_info, nullptr, &descriptorPool);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create descriptor pool, res %d", result);
@@ -147,10 +141,8 @@ create_new_pool(struct device *device) {
 	}
 
 	device->pools.push_back(descriptorPool);
-
 	return VK_SUCCESS;
 }
-
 
 VkResult
 create_bcn_compute_pipelines(struct device *dev)
@@ -195,14 +187,12 @@ create_bcn_compute_pipelines(struct device *dev)
 	    .pCode = (dev->use_image_view) ? reinterpret_cast<const uint32_t *>(bc7_iv_spv) : reinterpret_cast<const uint32_t *>(bc7_spv)
 	};
 
-
 	table.CreateShaderModule(device, &s3tc_shader_info, nullptr, &s3tcShaderModule);
 	table.CreateShaderModule(device, &bc6_shader_info, nullptr, &bc6ShaderModule);
 	table.CreateShaderModule(device, &bc7_shader_info, nullptr, &bc7ShaderModule);
 	table.CreateShaderModule(device, &rgtc_shader_info, nullptr, &rgtcShaderModule);
 
-
-		VkPipelineShaderStageCreateInfo shader_stage_infos[] = {
+	VkPipelineShaderStageCreateInfo shader_stage_infos[] = {
 		{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.pNext = nullptr,
@@ -241,8 +231,7 @@ create_bcn_compute_pipelines(struct device *dev)
 		}
 	};
 
-
-		VkDescriptorSetLayoutBinding bindings[] = {
+	VkDescriptorSetLayoutBinding bindings[] = {
 		{
 			.binding = 0,
 			.descriptorType = (dev->use_image_view) ? VK_DESCRIPTOR_TYPE_STORAGE_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -259,8 +248,7 @@ create_bcn_compute_pipelines(struct device *dev)
 		}
 	};
 
-
-		VkDescriptorSetLayoutCreateInfo descriptor_set_create_info = {
+	VkDescriptorSetLayoutCreateInfo descriptor_set_create_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
@@ -268,23 +256,20 @@ create_bcn_compute_pipelines(struct device *dev)
 		.pBindings = bindings
 	};
 
-	result = table.CreateDescriptorSetLayout(device,
-		&descriptor_set_create_info, NULL, &dev->setLayout);
+	result = table.CreateDescriptorSetLayout(device, &descriptor_set_create_info, nullptr, &dev->setLayout);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create descriptor set layout, res %d", result);
 		return result;
 	}
 
-
-		VkPushConstantRange push_constant = {
+	VkPushConstantRange push_constant = {
 		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
 		.offset = 0,
 		.size = sizeof(struct push_constants)
 	};
 
-
-		VkPipelineLayoutCreateInfo layout_create_info = {
+	VkPipelineLayoutCreateInfo layout_create_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.pNext = nullptr,
 		.flags = 0,
@@ -294,16 +279,14 @@ create_bcn_compute_pipelines(struct device *dev)
 		.pPushConstantRanges = &push_constant
 	};
 
-	result = table.CreatePipelineLayout(device,
-		&layout_create_info, NULL, &dev->layout);
+	result = table.CreatePipelineLayout(device, &layout_create_info, nullptr, &dev->layout);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create pipeline layout");
 		return result;
 	}
 
-
-		VkComputePipelineCreateInfo pipeline_create_info[] = {
+	VkComputePipelineCreateInfo pipeline_create_info[] = {
 	    {
 			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 			.pNext = nullptr,
@@ -342,11 +325,8 @@ create_bcn_compute_pipelines(struct device *dev)
 		}
 	};
 
-
-		VkPipeline pipelines[4];
-
-	result = table.CreateComputePipelines(device,
-		VK_NULL_HANDLE, 4, pipeline_create_info, NULL, pipelines);
+	VkPipeline pipelines[4];
+	result = table.CreateComputePipelines(device, VK_NULL_HANDLE, 4, pipeline_create_info, nullptr, pipelines);
 
 	if (result != VK_SUCCESS) {
 		Logger::log("error", "Failed to create compute pipeline, res %d", result);
@@ -364,13 +344,11 @@ create_bcn_compute_pipelines(struct device *dev)
 	table.DestroyShaderModule(device, rgtcShaderModule, nullptr);
 
 	result = create_new_pool(dev);
-
 	if (result != VK_SUCCESS)
 		return result;
 	
 	return VK_SUCCESS;
 }
-
 
 VkResult
 decompress_bcn_compute(struct device *dev,
@@ -383,11 +361,8 @@ decompress_bcn_compute(struct device *dev,
 		       		   VkImageLayout dstImageLayout)
 {
 	VkResult result;
-	VkLayerDispatchTable table;
-	VkDevice device;
-
-	table = dev->table;
-	device = dev->handle;
+	VkLayerDispatchTable table = dev->table;
+	VkDevice device = dev->handle;
 	
 	int width = copy_region->imageExtent.width;
 	int height = copy_region->imageExtent.height;
@@ -407,8 +382,7 @@ decompress_bcn_compute(struct device *dev,
 		.offsetY = offsetY
 	};
 
-
-		VkDescriptorSet descriptorSet;
+	VkDescriptorSet descriptorSet;
 	VkDescriptorSetAllocateInfo desc_alloc_info = {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.pNext = nullptr,
@@ -417,16 +391,12 @@ decompress_bcn_compute(struct device *dev,
 		.pSetLayouts = &dev->setLayout
 	};
 
-	result = table.AllocateDescriptorSets(device,
-		&desc_alloc_info, &descriptorSet);
+	result = table.AllocateDescriptorSets(device, &desc_alloc_info, &descriptorSet);
 
 	if (result == VK_ERROR_OUT_OF_POOL_MEMORY) {
 		create_new_pool(dev);
-
 		desc_alloc_info.descriptorPool = dev->pools.back();
-
-		result = table.AllocateDescriptorSets(device,
-			&desc_alloc_info, &descriptorSet);
+		result = table.AllocateDescriptorSets(device, &desc_alloc_info, &descriptorSet);
 	}
 
 	VkWriteDescriptorSet desc_writes[2];
@@ -437,24 +407,20 @@ decompress_bcn_compute(struct device *dev,
 		.range = VK_WHOLE_SIZE
 	};
 
-	
-		desc_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	desc_writes[0].pNext = nullptr;
-	desc_writes[0].dstSet = descriptorSet;
-	desc_writes[0].dstBinding = 1;
-	desc_writes[0].dstArrayElement = 0;
-	desc_writes[0].descriptorCount = 1;
-	desc_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	desc_writes[0].pImageInfo = nullptr;
-	desc_writes[0].pBufferInfo = &src_info;
-	desc_writes[0].pTexelBufferView =nullptr;
+	desc_writes[0] = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.pNext = nullptr,
+		.dstSet = descriptorSet,
+		.dstBinding = 1,
+		.dstArrayElement = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		.pImageInfo = nullptr,
+		.pBufferInfo = &src_info,
+		.pTexelBufferView = nullptr
+	};
 
-	desc_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	desc_writes[1].pNext = nullptr;
-	desc_writes[1].dstSet = descriptorSet;
-	desc_writes[1].dstBinding = 0;
-	desc_writes[1].dstArrayElement = 0;
-	desc_writes[1].descriptorCount = 1;
+	VkImageView dstImageView = VK_NULL_HANDLE;
 
 	if (!use_image_view) {
 		VkDescriptorBufferInfo dst_info = {
@@ -463,10 +429,18 @@ decompress_bcn_compute(struct device *dev,
 			.range = VK_WHOLE_SIZE
 		};                                           
 
-		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		desc_writes[1].pImageInfo = nullptr;                                                    
-		desc_writes[1].pBufferInfo = &dst_info;                                                 
-		desc_writes[1].pTexelBufferView = nullptr;
+		desc_writes[1] = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.pNext = nullptr,
+			.dstSet = descriptorSet,
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pImageInfo = nullptr,
+			.pBufferInfo = &dst_info,
+			.pTexelBufferView = nullptr
+		};
 	} 
 	else {	
 		VkComponentMapping components_mapping = {
@@ -475,7 +449,6 @@ decompress_bcn_compute(struct device *dev,
 			.b = VK_COMPONENT_SWIZZLE_IDENTITY,
 			.a = VK_COMPONENT_SWIZZLE_IDENTITY
 		};
-
 
 		VkImageViewCreateInfo viewCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -494,42 +467,42 @@ decompress_bcn_compute(struct device *dev,
 	    	}
 		};
 
-		VkImageView dstImageView;
 		table.CreateImageView(dev->handle, &viewCreateInfo, nullptr, &dstImageView);
 
-
-				VkDescriptorImageInfo image_info = {
+		VkDescriptorImageInfo image_info = {
 			.sampler = VK_NULL_HANDLE,
 			.imageView = dstImageView,
 			.imageLayout = VK_IMAGE_LAYOUT_GENERAL
 		};
 
-		desc_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;                      
-		desc_writes[1].pImageInfo = &image_info;                                                    
-		desc_writes[1].pBufferInfo = nullptr;
-		desc_writes[1].pTexelBufferView = nullptr;
+		desc_writes[1] = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.pNext = nullptr,
+			.dstSet = descriptorSet,
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			.pImageInfo = &image_info,
+			.pBufferInfo = nullptr,
+			.pTexelBufferView = nullptr
+		};
 	}
 
-	table.UpdateDescriptorSets(device,
-		2, desc_writes, 0, NULL);
+	table.UpdateDescriptorSets(device, 2, desc_writes, 0, nullptr);
   
     VkPipeline bcnPipeline;
     if (is_s3tc(format)) {
     	bcnPipeline = dev->s3tcPipeline;
-    }
-    else if (is_rgtc(format)) {
+    } else if (is_rgtc(format)) {
     	bcnPipeline = dev->rgtcPipeline;
-    }
-    else if(is_bc6(format)) {
+    } else if (is_bc6(format)) {
     	bcnPipeline = dev->bc6Pipeline;
-    }
-    else {
+    } else {
     	bcnPipeline = dev->bc7Pipeline;
     }
     
-	table.CmdBindPipeline(commandbuffer,
-		VK_PIPELINE_BIND_POINT_COMPUTE, bcnPipeline);
-
+	table.CmdBindPipeline(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, bcnPipeline);
 
 	if (use_image_view) {
 		VkImageMemoryBarrier first_barrier = {
@@ -555,18 +528,11 @@ decompress_bcn_compute(struct device *dev,
 			0, 0, nullptr, 0, nullptr, 1, &first_barrier);
 	}
 
-	table.CmdPushConstants(commandbuffer,
-		dev->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-		sizeof(constants), &constants);
+	table.CmdPushConstants(commandbuffer, dev->layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(constants), &constants);
+	table.CmdBindDescriptorSets(commandbuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dev->layout, 0, 1, &descriptorSet, 0, nullptr);
 
-	table.CmdBindDescriptorSets(commandbuffer,
-		VK_PIPELINE_BIND_POINT_COMPUTE, dev->layout, 0, 1, 
-		&descriptorSet, 0, nullptr);
-
-	// PARCHE MALI-G52: Ajustamos la dimensión Y a / 4 para coincidir exactamente con el grupo local 8x4 del shader
-	table.CmdDispatch(commandbuffer,
-		(width + 7) / 8, (height + 3) / 4, 1);
-
+	// PARCHE MALI-G52: Ajustado a / 4 para alinearse perfectamente con el grupo local 8x4 del shader
+	table.CmdDispatch(commandbuffer, (width + 7) / 8, (height + 3) / 4, 1);
 
 	if (use_image_view) {
 		VkImageMemoryBarrier second_barrier = {
@@ -592,8 +558,9 @@ decompress_bcn_compute(struct device *dev,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &second_barrier);
+            
+		table.DestroyImageView(device, dstImageView, nullptr);
 	}
 
-
-	 return VK_SUCCESS;
+	return VK_SUCCESS;
 }
