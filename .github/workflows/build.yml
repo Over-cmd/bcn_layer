@@ -1,4 +1,4 @@
-name: Generar layer.tzst Nativo Vulkan 1.1 para Unisoc T618
+name: Compilar Layer con Makefile Nativo
 
 on:
   push:
@@ -12,38 +12,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Clonar el código fuente del repositorio
+    # 1. Clonar el repositorio
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Configurar Java (Requerido para el SDK de Android)
-    - name: Configurar Java
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    # 3. Configurar Android SDK oficial
-    - name: Configurar Android SDK
-      uses: android-actions/setup-android@v3
-      with:
-        packages: 'platform-tools cmdline-tools;latest'
-
-    # 4. Configurar Android NDK de forma estable y robusta
-    - name: Configurar Android NDK
-      uses: nttld/setup-ndk@v1
-      id: setup-ndk
-      with:
-        ndk-version: r26d
-        link-to-sdk: true
-
-    # 5. Instalar Ninja, xxd, glslangValidator y zstd de forma global en Linux
-    - name: Instalar Herramientas de Compilación Globales
+    # 2. Instalar dependencias globales (make, xxd, glslangValidator, zstd)
+    - name: Instalar Herramientas de Compilación
       run: |
         sudo apt-get update
-        sudo apt-get install -y ninja-build xxd glslang-tools zstd
+        sudo apt-get install -y build-essential xxd glslang-tools zstd
 
-    # 6. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp
+    # 3. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp si hace falta
     - name: Aplicar Parche de Enlace Externo a bcn_layer.hpp
       run: |
         if ! grep -q "extern std::unordered_map.*instanceDispatch" src/bcn_layer.hpp; then
@@ -51,109 +30,41 @@ jobs:
           echo "¡Parche aplicado con éxito en bcn_layer.hpp!"
         fi
 
-    # 7. COMPILACIÓN REAL DE SHADERS (SPIR-V)
-    - name: Precompilar Shaders GLSL a Cabeceras C++ (*_spv.h)
+    # 4. COMPILACIÓN USANDO TU MAKEFILE
+    - name: Compilar Proyecto con Make
       run: |
-        cd src/
-        
-        compile_shader() {
-          local file=$1
-          local var_name=$2
-          local output_h=$3
-          
-          sed -i '/#version/a \#extension GL_GOOGLE_include_directive : require' "$file"
-          glslangValidator -V "$file" -o temp.spv
-          xxd -i temp.spv > "$output_h"
-          
-          sed -i "s/unsigned char temp_spv/const unsigned char ${var_name}/g" "$output_h"
-          sed -i "s/unsigned int temp_spv_len/const unsigned int ${var_name}_len/g" "$output_h"
-          
-          rm -f temp.spv
-        }
+        # Ejecuta tu Makefile directamente (compila shaders y genera libbcn_layer.so)
+        make -j$(nproc)
 
-        compile_shader s3tc.comp s3tc_spv s3tc_spv.h
-        compile_shader s3tc_iv.comp s3tc_iv_spv s3tc_iv_spv.h
-        compile_shader bc6.comp bc6_spv bc6_spv.h
-        compile_shader bc6_iv.comp bc6_iv_spv bc6_iv_spv.h
-        compile_shader bc7.comp bc7_spv bc7_spv.h
-        compile_shader bc7_iv.comp bc7_iv_spv bc7_iv_spv.h
-        compile_shader rgtc.comp rgtc_spv rgtc_spv.h
-        compile_shader rgtc_iv.comp rgtc_iv_spv rgtc_iv_spv.h
-        
-        cd ..
-
-    # 8. GENERACIÓN AUTOMÁTICA DEL ARCHIVO CMAKE EN LA RAÍZ
-    - name: Generar CMakeLists.txt automáticamente
-      run: |
-        cat << 'EOF' > CMakeLists.txt
-        cmake_minimum_required(VERSION 3.10)
-        project(VkLayer_bcn_decompress LANGUAGES CXX C)
-        
-        set(CMAKE_CXX_STANDARD 17)
-        set(CMAKE_CXX_STANDARD_REQUIRED ON)
-        
-        file(GLOB SOURCE_FILES "src/*.cpp")
-        
-        if(NOT SOURCE_FILES)
-            message(FATAL_ERROR "No se encontraron archivos .cpp válidos en la carpeta src/.")
-        endif()
-        
-        add_library(VkLayer_bcn SHARED ${SOURCE_FILES})
-        
-        target_include_directories(VkLayer_bcn PRIVATE src/)
-        target_link_libraries(VkLayer_bcn PRIVATE log vulkan)
-        
-        target_compile_options(VkLayer_bcn PRIVATE -fvisibility=hidden -O3 -ffast-math)
-        EOF
-        echo "¡Archivo CMakeLists.txt generado con éxito!"
-
-    # 9. CONFIGURAR Y COMPILAR CON CMAKE Y NINJA
-    - name: Configurar y Compilar con CMake y Ninja
-      run: |
-        rm -rf build
-        mkdir -p build && cd build
-        cmake .. \
-          -G "Ninja" \
-          -DCMAKE_TOOLCHAIN_FILE=${{ steps.setup-ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
-          -DANDROID_ABI=arm64-v8a \
-          -DANDROID_PLATFORM=android-29 \
-          -DCMAKE_BUILD_TYPE=Release
-        
-        cmake --build . --parallel $(nproc)
-
-    # 10. Organizar y verificar binario .so
+    # 5. Organizar y verificar binario .so
     - name: Organizar y Verificar Binario .so
       run: |
-        mkdir -p release_so
-        find build/ -name "*.so" -exec cp {} release_so/ \;
-        
-        if [ "$(ls -A release_so)" ]; then
-          echo "¡Éxito! Binario localizado de forma correcta."
-          file release_so/*.so
+        mkdir -p release_package
+        if [ -f "libbcn_layer.so" ]; then
+          cp libbcn_layer.so release_package/
+          echo "¡Éxito! libbcn_layer.so compilado correctamente."
+          file release_package/libbcn_layer.so
         else
-          echo "Error crítico: La compilación no generó ningún archivo .so."
+          echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
         fi
 
-    # 11. Estructurar la distribución y empaquetar en layer.tzst
+        # Copiar el manifiesto JSON (o crearlo si falta)
+        if [ -f "libbcn_layer.json" ]; then
+          cp libbcn_layer.json release_package/
+        else
+          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/libbcn_layer.json
+        fi
+
+    # 6. Empaquetar en layer.tzst
     - name: Empaquetar en layer.tzst
       run: |
-        mkdir -p release_package
-        cp release_so/*.so release_package/
-        
-        MANIFEST=$(find . -name "VkLayer_bcn.json" | head -n 1)
-        if [ ! -z "$MANIFEST" ]; then
-          cp "$MANIFEST" release_package/
-        else
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libVkLayer_bcn.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer for Mali-G52"}}' > release_package/VkLayer_bcn.json
-        fi
-        
         tar -I zstd -cf layer.tzst -C release_package .
 
-    # 12. Subir artefacto final
+    # 7. Subir artefacto final
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
-        name: layer-tzst-unisoc-t618
+        name: layer-tzst-bionic
         path: layer.tzst
         retention-days: 5
