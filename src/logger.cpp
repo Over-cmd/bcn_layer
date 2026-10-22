@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstdarg>
+#include <cstdint>
 #include <string>
 
 namespace Logger {
