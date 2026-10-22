@@ -32,7 +32,7 @@ BCnLayer_CreateFence(VkDevice device,
 	auto fence = std::make_shared<struct fence>();
 	fence->handle = *pFence;
 	fence->device = dev;
-	dev->alloc = pAllocator;
+	// Nota: Evitamos mutar dev->alloc globalmente para prevenir condiciones de carrera multihilo en Mali
 
 	{
 		scoped_lock l(global_lock);
@@ -55,6 +55,7 @@ BCnLayer_WaitForFences(VkDevice device,
 	if (!dev)
 		return VK_ERROR_INITIALIZATION_FAILED;
 
+	// Esperamos a las cercas fuera del bloqueo global para evitar contención de hilos
 	result = dev->table.WaitForFences(device, fenceCount, pFences, waitAll, timeout);
 	if (result != VK_SUCCESS || dev->use_image_view)
 		return result;
@@ -108,5 +109,3 @@ BCnLayer_DestroyFence(VkDevice device,
 		
 	fencesMap.erase(fence);
 }
-
-
