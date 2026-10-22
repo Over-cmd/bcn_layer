@@ -1,10 +1,10 @@
 #ifndef __LOGGER_HPP
-#define __COMMAND_BUFFER_HPP
+#define __LOGGER_HPP
 
 #include <sstream>
 #include <string>
 #include <iostream>
-#include <stdarg.h>
+#include <cstdarg>
 
 namespace Logger {
 	#define BCN_LAYER_LOG_INFO (1ull << 0)
@@ -15,7 +15,7 @@ namespace Logger {
 	    unsigned long long value;
 	};
 	
-	void log (const std::string& log_level, const char *format, ...);
+	void log(const std::string& log_level, const char *format, ...);
 	void init();
 }
 
