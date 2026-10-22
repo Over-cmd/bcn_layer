@@ -16,12 +16,13 @@
 extern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch;
 
 #undef VK_LAYER_EXPORT
-#if defined(WIN32)
+#if defined(_WIN32) || defined(WIN32)
 #define VK_LAYER_EXPORT extern "C" __declspec(dllexport)
 #else
 #define VK_LAYER_EXPORT extern "C"
 #endif
 
+// Identificadores estándar de drivers para Vulkan / Mesa 25
 #define VK_DRIVER_ID_QUALCOMM_PROPRIETARY 8                                  
 #define VK_DRIVER_ID_ARM_PROPRIETARY 9                                       
 #define VK_DRIVER_ID_MESA_TURNIP 18                                         
@@ -29,7 +30,7 @@ extern std::unordered_map<void *, VkLayerInstanceDispatchTable> instanceDispatch
 
 template <typename T>
 void* GetKey(T item) {
-    return *(void**) item;
+    return *(void**)item;
 }
 
 extern std::mutex global_lock;
@@ -59,4 +60,3 @@ struct device {
 struct device *get_device(VkDevice device);
 
 #endif
-
