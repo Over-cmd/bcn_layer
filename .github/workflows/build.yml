@@ -35,22 +35,24 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 5. ORGANIZAR ESTRUCTURA, REENSAMBLAR PARTES E INYECTAR CAPA (SIN CARPETA CONTENEDORA)
+    # 5. ORGANIZAR ESTRUCTURA LIMPIA (GARANTIZANDO QUE USR/ QUEDE EN LA RAÍZ)
     - name: Organizar estructura, reensamblar partes e inyectar capa
       run: |
         set -e
         rm -rf pkg_root
-        mkdir -p pkg_root
+        mkdir -p pkg_root/usr
 
-        # Copiar el contenido interno de extra_libs directamente para que 'usr/' quede en la raíz
-        if [ -d "extra_libs" ]; then
+        # Copiar exclusivamente el contenido interno de extra_libs/usr dentro de pkg_root/usr
+        if [ -d "extra_libs/usr" ]; then
+          cp -r extra_libs/usr/. pkg_root/usr/
+        elif [ -d "extra_libs" ]; then
           cp -r extra_libs/. pkg_root/
         fi
 
-        echo "--- Archivos detectados en usr/lib antes de unir ---"
+        echo "--- Archivos detectados en pkg_root/usr/lib antes de unir ---"
         ls -la pkg_root/usr/lib/
 
-        # Reconstruir libGL.so.1.5.0 a partir de sus partes subidas
+        # Reconstruir libGL.so.1.5.0 a partir de las partes subidas
         if ls pkg_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
           echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
           cat pkg_root/usr/lib/libGL.so.1.5.0.part* > pkg_root/usr/lib/libGL.so.1.5.0
@@ -58,10 +60,10 @@ jobs:
           echo "¡libGL.so.1.5.0 reconstruido con éxito!"
         fi
 
-        echo "--- Archivos detectados en usr/lib después de unir ---"
+        echo "--- Archivos detectados en pkg_root/usr/lib después de unir ---"
         ls -la pkg_root/usr/lib/
 
-        # Asegurar directorios de destino finales
+        # Asegurar directorios de destino finales para la capa
         mkdir -p pkg_root/usr/lib
         mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
         mkdir -p pkg_root/usr/share/vulkan/icd.d
@@ -69,7 +71,7 @@ jobs:
         # Inyectar libbcn_layer.so recién compilado en usr/lib/
         if [ -f "libbcn_layer.so" ]; then
           cp libbcn_layer.so pkg_root/usr/lib/
-          echo "¡Éxito! libbcn_layer.so añadido a usr/lib/."
+          echo "¡Éxito! libbcn_layer.so añadido a pkg_root/usr/lib/."
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
@@ -82,7 +84,7 @@ jobs:
           echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. EMPAQUETAR TODO EN extra_libs.tzst
+    # 6. EMPAQUETAR TODO EN extra_libs.tzst (Con usr/ directamente en la raíz)
     - name: Empaquetar en extra_libs.tzst
       run: |
         tar -I zstd -cf extra_libs.tzst -C pkg_root .
