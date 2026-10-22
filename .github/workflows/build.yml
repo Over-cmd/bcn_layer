@@ -75,15 +75,15 @@ jobs:
           echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 7. Empaquetar todo unificado en layer.tzst
-    - name: Empaquetar en layer.tzst
+    # 7. Empaquetar todo unificado en extra_libs.tzst
+    - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -I zstd -cf layer.tzst -C pkg_root .
+        tar -I zstd -cf extra_libs.tzst -C pkg_root .
 
     # 8. Subir artefacto final
     - name: Subir artefacto final
       uses: actions/upload-artifact@v4
       with:
-        name: layer-tzst-bionic
-        path: layer.tzst
+        name: extra-libs-package
+        path: extra_libs.tzst
         retention-days: 5
