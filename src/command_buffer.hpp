@@ -12,6 +12,6 @@ struct command_buffer {
 	struct fence *fence;
 };
 
-struct command_buffer *get_command_buffer(VkCommandBuffer);
+struct command_buffer *get_command_buffer(VkCommandBuffer commandBuffer);
 
 #endif
