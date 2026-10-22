@@ -16,11 +16,11 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Instalar dependencias globales
+    # 2. Instalar dependencias globales (incluyendo 'file' para detectar tipos de archivo)
     - name: Instalar Herramientas de Compilación y SDK de Vulkan
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev
+        sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev file unzip
 
     # 3. PARCHE DIRECTO C++: Añadir la declaración externa de instanceDispatch en bcn_layer.hpp
     - name: Aplicar Parche de Enlace Externo a bcn_layer.hpp
@@ -35,8 +35,8 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 5. BÚSQUEDA AUTOMÁTICA DE TODOS LOS .SO Y JSON EN EL REPO
-    - name: Buscar, unir y organizar todos los binarios y JSONs
+    # 5. BÚSQUEDA, UNIÓN Y EXTRACCIÓN AUTOMÁTICA DE PARTES ZIP
+    - name: Buscar, unir, extraer y organizar archivos
       run: |
         set -e
         rm -rf final_root extra_libs.tzst
@@ -47,19 +47,21 @@ jobs:
         echo "=== Buscando todos los archivos .so y fragmentos (.part*) en el repositorio ==="
         find . -type f \( -name "*.so*" -o -name "*.part*" \) ! -path "./.git*" ! -path "./final_root*" -exec cp -v {} final_root/usr/lib/ \;
 
-        echo "=== Contenido detectado en final_root/usr/lib antes de unir ==="
-        ls -la final_root/usr/lib/
-
-        # Reconstruir libGL.so.1.5.0 si existen partes
+        # Reconstruir el archivo a partir de las partes si existen
         if ls final_root/usr/lib/libGL.so.1.5.0.part* 1> /dev/null 2>&1; then
           echo "Reconstruyendo libGL.so.1.5.0 a partir de sus partes..."
           cat final_root/usr/lib/libGL.so.1.5.0.part* > final_root/usr/lib/libGL.so.1.5.0
           rm -f final_root/usr/lib/libGL.so.1.5.0.part*
-          echo "¡libGL.so.1.5.0 reconstruido con éxito!"
+          echo "¡Partes unidas con éxito!"
         fi
 
-        echo "=== Contenido en final_root/usr/lib tras unir libGL ==="
-        ls -la final_root/usr/lib/
+        # Si el archivo resultante es un ZIP, descomprimirlo para obtener la librería real
+        if file final_root/usr/lib/libGL.so.1.5.0 | grep -q "Zip archive"; then
+          echo "Detectado que libGL.so.1.5.0 es un archivo ZIP. Descomprimiendo..."
+          unzip -o final_root/usr/lib/libGL.so.1.5.0 -d final_root/usr/lib/
+          rm -f final_root/usr/lib/libGL.so.1.5.0
+          echo "¡Librería extraída del ZIP correctamente!"
+        fi
 
         # Inyectar la capa recién compilada libbcn_layer.so
         if [ -f "libbcn_layer.so" ]; then
@@ -84,7 +86,7 @@ jobs:
           echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > final_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. EMPAQUETAR DIRECTAMENTE EN extra_libs.tzst
+    # 6. EMPAQUETAR EN extra_libs.tzst MANTENIENDO LA EXTENSIÓN ORIGINAL
     - name: Empaquetar en extra_libs.tzst
       run: |
         tar -I zstd -cf extra_libs.tzst -C final_root .
