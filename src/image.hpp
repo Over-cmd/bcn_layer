@@ -11,6 +11,6 @@ struct image {
 	const VkAllocationCallbacks *alloc;
 };
 
-struct image *find_image(VkImage);
+struct image *find_image(VkImage image);
 
 #endif
