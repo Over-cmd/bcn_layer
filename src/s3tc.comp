@@ -143,11 +143,13 @@ void main()
     int bcWords  = (format < VK_FORMAT_BC2_UNORM_BLOCK) ? 2 : 4;
     int blockWordOffset = blockIndex * bcWords;
     
-    uvec4 payload;
-    payload.x = uInput.data[blockWordOffset + 0];
-    payload.y = uInput.data[blockWordOffset + 1];
-    payload.z = (bcWords > 2) ? uInput.data[blockWordOffset + 2] : 0u;
-    payload.w = (bcWords > 2) ? uInput.data[blockWordOffset + 3] : 0u;
+    // CORRECCIÓN MESA 25 / MALI: Asignación limpia y segura para evitar lecturas inválidas en BC1
+    uint p0 = uInput.data[blockWordOffset + 0];
+    uint p1 = uInput.data[blockWordOffset + 1];
+    uint p2 = (bcWords > 2) ? uInput.data[blockWordOffset + 2] : 0u;
+    uint p3 = (bcWords > 2) ? uInput.data[blockWordOffset + 3] : 0u;
+
+    uvec4 payload = uvec4(p0, p1, p2, p3);
 
     uvec2 color_payload, alpha_payload;
     vec3 ep0, ep1;
