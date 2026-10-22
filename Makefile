@@ -1,10 +1,12 @@
 CXX := g++
-CXXFLAGS := -std=c++17 -fPIC
+CXXFLAGS := -std=c++17 -fPIC -O3
 LDFLAGS := -shared
 PREFIX := /usr
 JSON := libbcn_layer.json
-JSON_INSTALL := $(PREFIX)/share/vulkan/implicit_layer.d
+
+# Para Winlator Bionic, el contenedor emula x86_64 mediante Box64
 INSTALL := $(PREFIX)/lib/x86_64-linux-gnu
+JSON_INSTALL := $(PREFIX)/share/vulkan/implicit_layer.d
 
 SOURCES := src/bcn_layer.cpp \
 		   src/image.cpp \
@@ -52,7 +54,7 @@ src/%.spv : src/%.comp
 	glslc $< -o $@
 
 src/%_spv.h : src/%.spv
-	cd src && xxd -i $(notdir $<) > $(notdir $@)
+	xxd -i $< > $@
 	
 $(OUTPUT) : $(SOURCES) $(SPIRV_HEADERS) $(HEADERS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(SOURCES) -o $(OUTPUT)
@@ -63,7 +65,7 @@ install: $(OUTPUT)
 	install -d $(INSTALL)
 	install -m 755 $(OUTPUT) $(INSTALL)
 	install -d $(JSON_INSTALL)
-	install -m 755 $(JSON) $(JSON_INSTALL)
+	install -m 644 $(JSON) $(JSON_INSTALL)
 
 clean:
 	rm -rf $(OUTPUT)
