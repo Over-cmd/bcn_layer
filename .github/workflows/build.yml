@@ -1,4 +1,4 @@
-name: Compilar Layer con Makefile Nativo
+name: Compilar Bcn Layer con Makefile Nativo
 
 on:
   push:
@@ -16,47 +16,47 @@ jobs:
     - name: Checkout del repositorio
       uses: actions/checkout@v4
 
-    # 2. Instalar dependencias globales (make, xxd, glslangValidator, zstd, libvulkan-dev)
+    # 2. Instalar dependencias globales
     - name: Instalar Herramientas de Compilación y SDK de Vulkan
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential xxd glslang-tools zstd libvulkan-dev
 
-    # 3. COMPILACIÓN USANDO TU MAKEFILE
+    # 3. Compilar el proyecto con Make
     - name: Compilar Proyecto con Make
       run: |
         make -j$(nproc)
 
-    # 4. Organizar y verificar binario .so con limpieza previa
-    - name: Organizar y Verificar Binario .so
+    # 4. Organizar estructura limpia en release_package
+    - name: Organizar estructura en release_package
       run: |
         set -e
-        # Limpiar restos anteriores para evitar corrupción
         rm -rf release_package extra_libs.tzst
-
+        
         mkdir -p release_package/usr/lib
         mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
         if [ -f "libbcn_layer.so" ]; then
-          cp libbcn_layer.so release_package/usr/lib/
-          echo "¡Éxito! libbcn_layer.so compilado correctamente."
+          cp -fv libbcn_layer.so release_package/usr/lib/
           file release_package/usr/lib/libbcn_layer.so
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
         fi
 
-        # Copiar el manifiesto JSON (o crearlo si falta)
         if [ -f "libbcn_layer.json" ]; then
-          cp libbcn_layer.json release_package/usr/share/vulkan/implicit_layer.d/
+          cp -fv libbcn_layer.json release_package/usr/share/vulkan/implicit_layer.d/
         else
           echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 5. EMPAQUETAR USANDO PIPE ROBUSTO (TAR + ZSTD)
+    # 5. Empaquetar usando tu método exacto validado
     - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -cf - -C release_package usr | zstd -T0 > extra_libs.tzst
+        cd release_package 
+        tar -I 'zstd -19 -T0' -cf ../extra_libs.tzst usr/ 
+        cd ..
+        echo "-> ¡Paquete extra_libs.tzst forjado con éxito y sin corrupción!"
 
     # 6. Subir artefacto final
     - name: Subir artefacto final
