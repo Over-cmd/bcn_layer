@@ -33,12 +33,15 @@ jobs:
     # 4. COMPILACIÓN USANDO TU MAKEFILE
     - name: Compilar Proyecto con Make
       run: |
-        # Ejecuta tu Makefile directamente (compila shaders y genera libbcn_layer.so)
         make -j$(nproc)
 
-    # 5. Organizar y verificar binario .so con la estructura usr/ requerida
+    # 5. Organizar y verificar binario .so con limpieza previa
     - name: Organizar y Verificar Binario .so
       run: |
+        set -e
+        # Limpiar restos anteriores para evitar corrupción
+        rm -rf release_package extra_libs.tzst
+
         mkdir -p release_package/usr/lib
         mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
@@ -58,10 +61,10 @@ jobs:
           echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. Empaquetar en extra_libs.tzst
+    # 6. Empaquetar limpio en extra_libs.tzst
     - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -I zstd -cf extra_libs.tzst -C release_package .
+        tar --zstd -cf extra_libs.tzst -C release_package .
 
     # 7. Subir artefacto final
     - name: Subir artefacto final
