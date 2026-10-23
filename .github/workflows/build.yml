@@ -36,22 +36,21 @@ jobs:
         # Ejecuta tu Makefile directamente (compila shaders y genera libbcn_layer.so)
         make -j$(nproc)
 
-    # 5. Organizar estructura estricta usr/ en la raíz para Winlator/Ludashi
-    - name: Organizar estructura usr/ y verificar binario .so
+    # 5. Organizar estructura usando release_package con usr/ dentro
+    - name: Organizar estructura en release_package
       run: |
         set -e
-        rm -rf pkg_root extra_libs.tzst
+        rm -rf release_package extra_libs.tzst
         
-        # Crear la jerarquía obligatoria con usr/ en la raíz
-        mkdir -p pkg_root/usr/lib
-        mkdir -p pkg_root/usr/share/vulkan/implicit_layer.d
-        mkdir -p pkg_root/usr/share/vulkan/icd.d
+        # Crear la estructura requerida dentro de release_package
+        mkdir -p release_package/usr/lib
+        mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
-        # Copiar el binario .so compilado a pkg_root/usr/lib/
+        # Copiar el binario .so compilado a release_package/usr/lib/
         if [ -f "libbcn_layer.so" ]; then
-          cp libbcn_layer.so pkg_root/usr/lib/
+          cp libbcn_layer.so release_package/usr/lib/
           echo "¡Éxito! libbcn_layer.so compilado correctamente."
-          file pkg_root/usr/lib/libbcn_layer.so
+          file release_package/usr/lib/libbcn_layer.so
         else
           echo "Error crítico: El Makefile no generó libbcn_layer.so."
           exit 1
@@ -59,15 +58,15 @@ jobs:
 
         # Copiar el manifiesto JSON (o crearlo si falta) dentro de implicit_layer.d
         if [ -f "libbcn_layer.json" ]; then
-          cp libbcn_layer.json pkg_root/usr/share/vulkan/implicit_layer.d/
+          cp libbcn_layer.json release_package/usr/share/vulkan/implicit_layer.d/
         else
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > pkg_root/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
+          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         fi
 
-    # 6. Empaquetar en extra_libs.tzst con usr/ directamente en la raíz
+    # 6. Empaquetar en extra_libs.tzst
     - name: Empaquetar en extra_libs.tzst
       run: |
-        tar -I zstd -cf extra_libs.tzst -C pkg_root .
+        tar -I zstd -cf extra_libs.tzst -C release_package .
 
     # 7. Subir artefacto final
     - name: Subir artefacto final
