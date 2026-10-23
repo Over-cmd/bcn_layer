@@ -1,4 +1,4 @@
-name: Compilar Layer con Makefile Nativo
+name: Compilar Bcn Layer con Makefile Nativo
 
 on:
   push:
@@ -27,13 +27,13 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 4. Organizar carpetas separadas y JSON con la ruta original
+    # 4. Organizar carpetas separadas (usr/lib y usr/share/vulkan/implicit_layer.d)
     - name: Organizar Estructura Separada
       run: |
         set -e
         rm -rf release_package extra_libs.tzst
 
-        # Crear ambas estructuras de forma independiente
+        # Crear ambas carpetas de forma independiente
         mkdir -p release_package/usr/lib
         mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
@@ -46,15 +46,15 @@ jobs:
           exit 1
         fi
 
-        # Crear el JSON con "library_path": "libbcn_layer.so" como el original
+        # Crear el JSON exacto con "library_path": "libbcn_layer.so" como el original
         cat << 'EOF' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
         {
-          "file_format_version" : "1.1.0",
+          "file_format_version" : "1.0.0",
           "layer" : {
             "name": "VK_LAYER_BCN_BCnLayer",
             "type": "GLOBAL",
             "library_path": "libbcn_layer.so",
-            "api_version": "1.1.0",
+            "api_version": "1.0.0",
             "implementation_version": "1",
             "description": "BCn Decompression Layer",
             "functions": {
@@ -71,13 +71,13 @@ jobs:
         }
         EOF
 
-    # 5. Empaquetar manteniendo usr/ en la raíz con el método tar + zstd optimizado
+    # 5. Empaquetar usando el método exacto validado
     - name: Empaquetar en extra_libs.tzst
       run: |
         cd release_package 
         tar -I 'zstd -19 -T0' -cf ../extra_libs.tzst usr/ 
         cd ..
-        echo "-> ¡Paquete extra_libs.tzst estructurado por separado y con el library_path original!"
+        echo "-> ¡Paquete extra_libs.tzst forjado con éxito!"
 
     # 6. Subir artefacto final
     - name: Subir artefacto final
