@@ -20,10 +20,6 @@
  *
  */
 
-/* Need to define dispatch table
- * Core struct can then have ptr to dispatch table at the top
- * Along with object ptrs for current and next OBJ
- */
 #pragma once
 
 #include <vulkan/vulkan.h>
@@ -253,14 +249,6 @@ typedef struct VkLayerInstanceDispatchTable_ {
         GetPhysicalDeviceExternalImageFormatPropertiesNV;
 } VkLayerInstanceDispatchTable;
 
-// ------------------------------------------------------------------------------------------------
-// CreateInstance and CreateDevice support structures
-
-/* Sub type of structure for instance and device loader ext of CreateInfo.
- * When sType == VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
- * or sType == VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO
- * then VkLayerFunction indicates struct type pointed to by pNext
- */
 typedef enum VkLayerFunction_ {
     VK_LAYER_LINK_INFO = 0,
     VK_LOADER_DATA_CALLBACK = 1
@@ -271,13 +259,6 @@ typedef struct VkLayerInstanceLink_ {
     PFN_vkGetInstanceProcAddr pfnNextGetInstanceProcAddr;
 } VkLayerInstanceLink;
 
-/*
- * When creating the device chain the loader needs to pass
- * down information about it's device structure needed at
- * the end of the chain. Passing the data via the
- * VkLayerDeviceInfo avoids issues with finding the
- * exact instance being used.
- */
 typedef struct VkLayerDeviceInfo_ {
     void *device_info;
     PFN_vkGetInstanceProcAddr pfnNextGetInstanceProcAddr;
@@ -289,7 +270,7 @@ typedef VkResult (VKAPI_PTR *PFN_vkSetDeviceLoaderData)(VkDevice device,
         void *object);
 
 typedef struct {
-    VkStructureType sType; // VK_STRUCTURE_TYPE_LOADER_INSTANCE_CREATE_INFO
+    VkStructureType sType;
     const void *pNext;
     VkLayerFunction function;
     union {
@@ -305,7 +286,7 @@ typedef struct VkLayerDeviceLink_ {
 } VkLayerDeviceLink;
 
 typedef struct {
-    VkStructureType sType; // VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO
+    VkStructureType sType;
     const void *pNext;
     VkLayerFunction function;
     union {
