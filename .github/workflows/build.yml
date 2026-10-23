@@ -36,17 +36,12 @@ jobs:
         # Ejecuta tu Makefile directamente (compila shaders y genera libbcn_layer.so)
         make -j$(nproc)
 
-    # 5. Organizar estructura usando release_package con usr/ dentro
-    - name: Organizar estructura en release_package
+    # 5. Organizar y verificar binario .so con la estructura usr/ requerida
+    - name: Organizar y Verificar Binario .so
       run: |
-        set -e
-        rm -rf release_package extra_libs.tzst
-        
-        # Crear la estructura requerida dentro de release_package
         mkdir -p release_package/usr/lib
         mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
-        # Copiar el binario .so compilado a release_package/usr/lib/
         if [ -f "libbcn_layer.so" ]; then
           cp libbcn_layer.so release_package/usr/lib/
           echo "¡Éxito! libbcn_layer.so compilado correctamente."
@@ -56,7 +51,7 @@ jobs:
           exit 1
         fi
 
-        # Copiar el manifiesto JSON (o crearlo si falta) dentro de implicit_layer.d
+        # Copiar el manifiesto JSON (o crearlo si falta)
         if [ -f "libbcn_layer.json" ]; then
           cp libbcn_layer.json release_package/usr/share/vulkan/implicit_layer.d/
         else
