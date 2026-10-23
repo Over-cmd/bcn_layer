@@ -1,4 +1,4 @@
-name: Compilar Bcn Layer con Makefile Nativo
+name: Compilar Layer con Makefile Nativo
 
 on:
   push:
@@ -27,15 +27,17 @@ jobs:
       run: |
         make -j$(nproc)
 
-    # 4. Organizar estructura limpia en release_package
-    - name: Organizar estructura en release_package
+    # 4. Organizar carpetas separadas y JSON con la ruta original
+    - name: Organizar Estructura Separada
       run: |
         set -e
         rm -rf release_package extra_libs.tzst
-        
+
+        # Crear ambas estructuras de forma independiente
         mkdir -p release_package/usr/lib
         mkdir -p release_package/usr/share/vulkan/implicit_layer.d
 
+        # Copiar el binario .so estrictamente en usr/lib/
         if [ -f "libbcn_layer.so" ]; then
           cp -fv libbcn_layer.so release_package/usr/lib/
           file release_package/usr/lib/libbcn_layer.so
@@ -44,19 +46,38 @@ jobs:
           exit 1
         fi
 
-        if [ -f "libbcn_layer.json" ]; then
-          cp -fv libbcn_layer.json release_package/usr/share/vulkan/implicit_layer.d/
-        else
-          echo '{"file_format_version":"1.1.0","layer":{"name":"VK_LAYER_BCN_BCnLayer","type":"GLOBAL","library_path":"./libbcn_layer.so","api_version":"1.1.0","implementation_version":"1","description":"BCn Texture Decompression Compute Layer"}}' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
-        fi
+        # Crear el JSON con "library_path": "libbcn_layer.so" como el original
+        cat << 'EOF' > release_package/usr/share/vulkan/implicit_layer.d/libbcn_layer.json
+        {
+          "file_format_version" : "1.1.0",
+          "layer" : {
+            "name": "VK_LAYER_BCN_BCnLayer",
+            "type": "GLOBAL",
+            "library_path": "libbcn_layer.so",
+            "api_version": "1.1.0",
+            "implementation_version": "1",
+            "description": "BCn Decompression Layer",
+            "functions": {
+              "vkGetInstanceProcAddr": "BCnLayer_GetInstanceProcAddr",
+              "vkGetDeviceProcAddr": "BCnLayer_GetDeviceProcAddr"
+            },
+            "enable_environment": {
+              "ENABLE_BCN_COMPUTE": "1"
+            },
+            "disable_environment": {
+              "DISABLE_BCN_COMPUTE": "1"
+            }
+          }
+        }
+        EOF
 
-    # 5. Empaquetar usando tu método exacto validado
+    # 5. Empaquetar manteniendo usr/ en la raíz con el método tar + zstd optimizado
     - name: Empaquetar en extra_libs.tzst
       run: |
         cd release_package 
         tar -I 'zstd -19 -T0' -cf ../extra_libs.tzst usr/ 
         cd ..
-        echo "-> ¡Paquete extra_libs.tzst forjado con éxito y sin corrupción!"
+        echo "-> ¡Paquete extra_libs.tzst estructurado por separado y con el library_path original!"
 
     # 6. Subir artefacto final
     - name: Subir artefacto final
